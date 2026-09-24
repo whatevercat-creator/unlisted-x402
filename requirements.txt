@@ -1,0 +1,27 @@
+fastapi>=0.141
+uvicorn[standard]>=0.30
+httpx>=0.28
+pydantic>=2
+
+# x402 protocol SDK + CDP's facilitator/wallet/discovery helpers. Verified
+# against x402==2.24.0 / cdp-sdk==1.48.1 during implementation -- pin bumps
+# should be checked against payment.py's assumptions (RouteConfig/PaymentOption
+# are plain dataclasses, not pydantic; create_facilitator_config() is a local,
+# no-network call), outbound_payment.py's (x402HTTPResourceServer.initialize()
+# calls os._exit(1) -- an unconditional, uncatchable process kill, not a
+# raisable exception -- on a facilitator/route capability mismatch; see
+# payment.py's module docstring), and bazaar.py's (X402FacilitatorApi isn't
+# wired into cdp.CdpClient/ApiClients -- constructed directly from
+# CdpClient().cdp_api_client; the four discovery/validate endpoints are
+# public/unauthenticated per cdp.openapi_client.public_operations).
+#   fastapi  -- inbound paywall middleware (PaymentMiddlewareASGI)
+#   httpx    -- outbound payment client transport (x402AsyncTransport)
+#   evm      -- eth-account/eth-abi/eth-keys, needed by
+#               x402.mechanisms.evm.exact for both the client and server
+#               "exact" scheme implementations
+x402[fastapi,httpx,evm]>=2.24.0
+cdp-sdk>=1.48.1  # facilitator/wallet clients (payment.py, outbound_payment.py) + Bazaar discovery/validate client (bazaar.py)
+
+# dev/test only
+pytest>=9
+pytest-asyncio>=1.4
