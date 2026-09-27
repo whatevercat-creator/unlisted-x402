@@ -518,17 +518,52 @@ def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
 
 
 def summarize(checks: list[CheckResult]) -> str:
+    """Build the report's top-level verdict sentence.
+
+    Mode-aware: the "clean" case used to hardcode "checks 1-4" regardless of
+    which checks actually ran, so a paid-mode report with a real, *passing*
+    settlement_echo result (or an enabled bazaar_index_status result) read
+    identically to a dry-mode report that never attempted either -- a real
+    settlement and a real Bazaar-catalog confirmation are both much stronger
+    signals than "the schema looks fine," and deserve their own sentence
+    rather than being silently folded into "no issues found." A FAIL on
+    either check still routes through the ordinary failures/warnings branch
+    below unchanged, since this function only special-cases the fully-clean
+    case; a SKIP on either (not configured, or declined for a documented
+    reason) is deliberately left unmentioned here -- that reason already
+    lives on the check itself.
+    """
     failures = [c for c in checks if c.status == Status.FAIL]
     warnings = [c for c in checks if c.status == Status.WARN]
 
     if not failures and not warnings:
-        return (
-            "No issues found in checks 1-4 (resource, scheme match, bazaar "
-            "extension, description length). This doesn't guarantee a Bazaar "
-            "listing -- settlement must still succeed and actually echo the "
-            "extension, and the eviction/EXTENSION-RESPONSES checks aren't "
-            "covered by a dry check."
+        by_id = {c.check_id: c for c in checks}
+        schema_check_count = len(
+            [c for c in checks if c.check_id not in ("settlement_echo", "bazaar_index_status", "multiple_accepts_noted")]
         )
+        sentence = (
+            f"No issues found in the {schema_check_count} schema/config check(s) "
+            "(resource, scheme match, bazaar extension, description length, "
+            "and route template when reported)."
+        )
+
+        settlement = by_id.get("settlement_echo")
+        if settlement is not None and settlement.status == Status.PASS:
+            sentence += " A real test payment was also attempted and settled successfully."
+        elif settlement is None:
+            # Dry mode never attempts a real payment -- the schema looking
+            # right is not the same guarantee a real settlement would be.
+            sentence += (
+                " This doesn't guarantee a Bazaar listing -- settlement must "
+                "still succeed and actually echo the extension, and the "
+                "eviction/EXTENSION-RESPONSES checks aren't covered by a dry check."
+            )
+
+        bazaar = by_id.get("bazaar_index_status")
+        if bazaar is not None and bazaar.status == Status.PASS:
+            sentence += " Confirmed currently indexed in the CDP Bazaar catalog."
+
+        return sentence
 
     parts = []
     if failures:
