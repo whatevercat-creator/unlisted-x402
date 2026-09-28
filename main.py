@@ -1,5 +1,5 @@
 """
-x402 Doctor -- dry-check + paid /diagnose API.
+Unlisted (formerly "x402 Doctor") -- dry-check + paid /diagnose API.
 
 MVP scope per the spec: a single POST /diagnose endpoint, no dashboard, no
 history, no signed attestations -- just the diagnosis. This wraps
@@ -62,7 +62,9 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from html import escape
+
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 
@@ -211,9 +213,13 @@ def create_app(
         bazaar_client = bazaar.build_bazaar_client()
 
     fastapi_app = FastAPI(
-        title="x402 Doctor",
-        version="0.2.0-paid-diagnose" if (facilitator_client and pay_to) else "0.1.0-dry-check",
-        description="Diagnosis for x402 sellers not showing up in the CDP Bazaar.",
+        title="Unlisted",
+        version="0.3.0" if (facilitator_client and pay_to) else "0.3.0-dry-check",
+        description=(
+            "Find out why your x402 endpoint isn't listed in the Coinbase CDP Bazaar. "
+            "Checks CDP's own live index status, and in paid mode makes a real test "
+            "payment to your endpoint and reports whether it settled."
+        ),
     )
 
     @fastapi_app.post("/diagnose")
@@ -293,7 +299,10 @@ def create_app(
             raise HTTPException(status_code=502, detail=f"Could not fetch target: {e}") from e
 
         log_submission(url, blocked=False, caller=caller)
-        return asdict(report)
+        # Top-level answer first: is it in the Bazaar right now? Everything
+        # else (verdict, per-check detail) follows unchanged.
+        body = asdict(report)
+        return {"bazaar": bazaar.summarize_index_status(report.checks), **body}
 
     @fastapi_app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
@@ -304,6 +313,10 @@ def create_app(
         return JSONResponse(
             status_code=500, content={"detail": "Internal error diagnosing this URL."}
         )
+
+    @fastapi_app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def home() -> HTMLResponse:
+        return HTMLResponse(_home_page(price=price, paid_price=paid_price))
 
     @fastapi_app.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -326,6 +339,56 @@ def create_app(
         )
 
     return fastapi_app
+
+
+def _home_page(*, price: str, paid_price: str) -> str:
+    """Static landing page for unlisted.sh. No user input is rendered."""
+    price, paid_price = escape(price), escape(paid_price)
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unlisted: why isn't my x402 endpoint in the Bazaar?</title>
+<meta name="description" content="Find out why your x402 endpoint isn't listed in the Coinbase CDP Bazaar, with CDP's live index status and a real test payment.">
+<style>
+:root {{ --bg:#fafaf9; --fg:#1c1917; --muted:#57534e; --card:#fff; --line:#e7e5e4; --accent:#b45309; --code:#f5f5f4; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg:#0c0a09; --fg:#f5f5f4; --muted:#a8a29e; --card:#1c1917; --line:#292524; --accent:#f59e0b; --code:#292524; }} }}
+* {{ box-sizing:border-box; }}
+body {{ margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif; }}
+main {{ max-width:720px; margin:0 auto; padding:56px 16px 72px; }}
+h1 {{ font-size:2.4rem; margin:0 0 4px; letter-spacing:-0.02em; }}
+h1 span {{ color:var(--accent); }}
+.lede {{ font-size:1.2rem; color:var(--muted); margin:0 0 32px; }}
+h2 {{ font-size:1.1rem; margin:36px 0 12px; }}
+.card {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:12px 0; }}
+.card b {{ display:block; margin-bottom:2px; }}
+.price {{ float:right; color:var(--accent); font-weight:600; }}
+pre, code {{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.88rem; }}
+pre {{ background:var(--code); border-radius:8px; padding:14px; overflow-x:auto; }}
+code {{ background:var(--code); padding:1px 5px; border-radius:4px; }}
+a {{ color:var(--accent); }}
+footer {{ margin-top:48px; color:var(--muted); font-size:0.9rem; }}
+</style></head>
+<body><main>
+<h1>unlisted<span>.sh</span></h1>
+<p class="lede">Your x402 endpoint works, but it isn't in the Bazaar. Find out why, and get it there.</p>
+
+<h2>What makes it different</h2>
+<div class="card"><b>Asks CDP directly</b>Whether your endpoint is indexed right now, when it was last crawled, and whether CDP's own facilitator would accept it. Ground truth, not a guess.</div>
+<div class="card"><b>Makes the first real payment</b>The CDP Bazaar lists a route after CDP's facilitator settles its first payment, so a new endpoint nobody has paid yet stays unlisted. Paid mode pays your endpoint once for real and reports whether it settled end to end.</div>
+
+<h2>Two modes</h2>
+<div class="card"><span class="price">{price}</span><b>Check</b>Your 402 challenge and Bazaar declaration, plus CDP's live index status.</div>
+<div class="card"><span class="price">{paid_price}</span><b>Check + real payment</b>Everything above, then one real, small test payment to your endpoint (Base mainnet, <code>exact</code> scheme, USDC). Limited to once per domain per 24 hours.</div>
+
+<h2>Call it</h2>
+<pre>POST https://unlisted.sh/diagnose
+Content-Type: application/json
+
+{{"url": "https://your-api.example.com/paid-route"}}</pre>
+<p>Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
+
+<footer><a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/healthz">Status</a></footer>
+</main></body></html>"""
 
 
 app = create_app()

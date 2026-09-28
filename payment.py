@@ -1,5 +1,5 @@
 """
-Inbound paywall for x402 Doctor's own /diagnose endpoint.
+Inbound paywall for Unlisted's own /diagnose endpoint.
 
 Per the spec's tech stack: FastAPI + the x402 Python SDK, charging a flat
 $0.02 per diagnosis via the CDP facilitator, on Base mainnet -- not
@@ -100,11 +100,11 @@ DEFAULT_PAID_PRICE_USD = os.environ.get("X402_DOCTOR_PAID_PRICE_USD", "$0.10")
 # chars, <=5 tags of <=32 chars each) -- getting soft-dropped from our own
 # listing for exceeding a limit this whole product exists to catch in other
 # people's endpoints would be a fairly embarrassing bug.
-SERVICE_NAME = "x402 Doctor"
+SERVICE_NAME = "Unlisted"
 TAGS = ["x402", "diagnostics", "bazaar"]
 DESCRIPTION = (
-    "Diagnose why an x402-protected endpoint isn't showing up in the "
-    "Coinbase CDP Bazaar discovery catalog."
+    "Find out why an x402 endpoint isn't listed in the Coinbase CDP Bazaar: "
+    "checks CDP's live index status and can make a real test payment."
 )
 
 

@@ -211,9 +211,10 @@ def _result_from_validate_response(response: Any) -> CheckResult:
             confidence=Confidence.FACILITATOR,
             fix=(
                 "Wait for Bazaar's next crawl. If it still isn't indexed after that, "
-                "confirm the endpoint has received at least one real, successfully "
-                "settled payment -- some catalogs only index a resource after its "
-                "first successful settlement."
+                "the usual cause is that no payment has been settled for it yet: the "
+                "Bazaar lists a route after the facilitator settles its first payment. "
+                "Re-run with ?mode=paid and Unlisted will make that first real, small "
+                "payment (Base mainnet, exact scheme) and report whether it settled."
             ),
         )
 
@@ -246,4 +247,30 @@ def _result_from_validate_response(response: Any) -> CheckResult:
     )
 
 
-__all__ = ["build_bazaar_client", "check_bazaar_index_status", "CHECK_ID"]
+# Top-level answer to "is this endpoint in the Bazaar right now?", derived
+# from the bazaar_index_status check so callers don't have to dig through
+# checks[] for the one line the product is about.
+_INDEX_STATUS_BY_CHECK = {
+    Status.PASS: ("indexed", True),
+    Status.WARN: ("not_indexed_would_be_accepted", False),
+    Status.FAIL: ("not_indexed", False),
+    Status.SKIP: ("unknown", None),
+}
+
+
+def summarize_index_status(checks: list[CheckResult]) -> dict[str, Any]:
+    """Return {"indexed": bool|None, "status": str, "detail": str} for the
+    report's top-level `bazaar` field. indexed is None when the live lookup
+    didn't run (feature off, non-https target, or CDP unreachable)."""
+    for check in checks:
+        if check.check_id == CHECK_ID:
+            status, indexed = _INDEX_STATUS_BY_CHECK.get(check.status, ("unknown", None))
+            return {"indexed": indexed, "status": status, "detail": check.detail}
+    return {
+        "indexed": None,
+        "status": "unknown",
+        "detail": "Live Bazaar index lookup is not enabled on this deployment.",
+    }
+
+
+__all__ = ["build_bazaar_client", "check_bazaar_index_status", "summarize_index_status", "CHECK_ID"]
