@@ -55,6 +55,9 @@ reachable from it.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 import os
 from dataclasses import asdict
@@ -64,7 +67,8 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Request
 from html import escape
 
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field, HttpUrl
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 
@@ -117,6 +121,29 @@ economic_ceiling = EconomicCeiling(
 
 class DiagnoseRequest(BaseModel):
     url: HttpUrl = Field(..., description="The x402-protected resource URL to diagnose")
+
+
+class Mirror402ChallengeMiddleware(BaseHTTPMiddleware):
+    """PaymentMiddlewareASGI returns {} as the 402 body and puts the whole
+    challenge only in the base64 PAYMENT-REQUIRED header. Many x402 clients
+    read accepts[] from the body, so copy the decoded header into it (the
+    header is left untouched). Same fix as crypto-sentiment-x402 65de7c2.
+    Also adds WWW-Authenticate: Payment for generic HTTP clients."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if response.status_code != 402:
+            return response
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        header = response.headers.get("payment-required")
+        if header and body.strip() in (b"", b"{}"):
+            try:
+                body = json.dumps(json.loads(base64.b64decode(header))).encode()
+            except (ValueError, binascii.Error):
+                logger.warning("could not decode PAYMENT-REQUIRED header; leaving 402 body as-is")
+        headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+        headers["WWW-Authenticate"] = "Payment"
+        return Response(content=body, status_code=402, headers=headers, media_type="application/json")
 
 
 def _target_domain(url: str) -> str:
@@ -333,6 +360,8 @@ def create_app(
         # builds its middleware stack, which happens lazily on the first
         # request the running process handles, not at import/startup time.
         fastapi_app.add_middleware(PaymentMiddlewareASGI, routes=routes, server=resource_server)
+        # Added after (so it wraps outside) the paywall: sees its 402s.
+        fastapi_app.add_middleware(Mirror402ChallengeMiddleware)
     else:
         logger.warning(
             "X402_PAY_TO not set -- running /diagnose without a paywall (dev mode)."

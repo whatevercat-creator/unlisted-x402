@@ -91,3 +91,37 @@ def test_root_page_stays_free_with_paywall_active():
     client, _ = _build_paid_client()
     assert client.get("/").status_code == 200
     assert client.post("/diagnose", json={"url": "https://api.example.com/x"}).status_code == 402
+
+
+def test_402_body_mirrors_payment_required_header():
+    import base64, json
+    from test_payment import _build_paid_client
+
+    client, _ = _build_paid_client()
+    resp = client.post("/diagnose", json={"url": "https://api.example.com/x"})
+    assert resp.status_code == 402
+    decoded = json.loads(base64.b64decode(resp.headers["payment-required"]))
+    assert resp.json() == decoded
+    assert resp.json()["accepts"], "body must carry accepts[]"
+    assert resp.headers["www-authenticate"] == "Payment"
+
+
+def test_paid_mode_402_body_carries_paid_price():
+    from test_payment import _build_paid_client
+
+    client, _ = _build_paid_client()
+    dry = client.post("/diagnose", json={"url": "https://api.example.com/x"}).json()
+    paid = client.post("/diagnose?mode=paid", json={"url": "https://api.example.com/x"}).json()
+    assert int(paid["accepts"][0]["amount"]) > int(dry["accepts"][0]["amount"])
+
+
+def test_own_route_declares_bazaar_extension_for_json_body():
+    from test_payment import _build_paid_client
+
+    client, _ = _build_paid_client()
+    challenge = client.post("/diagnose", json={"url": "https://api.example.com/x"}).json()
+    bazaar_ext = challenge["extensions"]["bazaar"]
+    info_input = bazaar_ext["info"]["input"]
+    assert info_input["method"] == "POST"
+    assert info_input.get("bodyType") == "json"
+    assert "url" in str(bazaar_ext["schema"])

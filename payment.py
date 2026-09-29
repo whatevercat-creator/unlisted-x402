@@ -70,6 +70,11 @@ from __future__ import annotations
 
 import os
 
+from x402.extensions.bazaar import (
+    OutputConfig,
+    bazaar_resource_server_extension,
+    declare_discovery_extension,
+)
 from x402.http.types import PaymentOption, RouteConfig, RoutesConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.server import x402ResourceServer
@@ -105,6 +110,45 @@ TAGS = ["x402", "diagnostics", "bazaar"]
 DESCRIPTION = (
     "Find out why an x402 endpoint isn't listed in the Coinbase CDP Bazaar: "
     "checks CDP's live index status and can make a real test payment."
+)
+
+
+# Bazaar discovery declaration for Unlisted's own route, so the Bazaar can
+# list it and agents know how to call it: POST a JSON body with the target
+# URL; the response leads with bazaar.indexed. (?mode=paid is described in
+# the text rather than declared, since the input here is the JSON body.)
+BAZAAR_EXTENSION = declare_discovery_extension(
+    input={"url": "https://api.example.com/paid-route"},
+    input_schema={
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "Full https URL of the x402-protected endpoint to diagnose. "
+                "Add ?mode=paid to /diagnose itself to also make one real test payment.",
+            },
+        },
+        "required": ["url"],
+    },
+    body_type="json",
+    output=OutputConfig(
+        example={
+            "bazaar": {"indexed": False, "status": "not_indexed_would_be_accepted", "detail": "..."},
+            "url": "https://api.example.com/paid-route",
+            "mode": "dry",
+            "checks": [{"check_id": "bazaar_extension", "status": "pass", "detail": "..."}],
+            "verdict": "...",
+        },
+        schema={
+            "properties": {
+                "bazaar": {"type": "object"},
+                "url": {"type": "string"},
+                "mode": {"type": "string"},
+                "checks": {"type": "array"},
+                "verdict": {"type": "string"},
+            },
+            "required": ["bazaar", "checks", "verdict"],
+        },
+    ),
 )
 
 
@@ -153,8 +197,10 @@ def build_routes(
                 network=NETWORK,
             ),
             description=DESCRIPTION,
+            mime_type="application/json",
             service_name=SERVICE_NAME,
             tags=TAGS,
+            extensions=BAZAAR_EXTENSION,
         )
     }
 
@@ -170,6 +216,7 @@ def build_resource_server(facilitator_client) -> x402ResourceServer:
     """
     server = x402ResourceServer(facilitator_client)
     server.register(NETWORK, ExactEvmServerScheme())
+    server.register_extension(bazaar_resource_server_extension)
     return server
 
 
