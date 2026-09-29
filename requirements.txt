@@ -21,6 +21,7 @@ pydantic>=2
 #               "exact" scheme implementations
 x402[fastapi,httpx,evm]>=2.24.0
 cdp-sdk>=1.48.1  # facilitator/wallet clients (payment.py, outbound_payment.py) + Bazaar discovery/validate client (bazaar.py)
+jsonschema>=4.0.0  # required by x402.extensions.bazaar (payment.py); not the x402[extensions] extra, which downgrades websockets below solana's floor
 
 # dev/test only
 pytest>=9
