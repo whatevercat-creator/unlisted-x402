@@ -79,6 +79,9 @@ report even if CDP's own API happens to be unreachable at that moment.
 
 from __future__ import annotations
 
+import json
+import re
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from diagnosis import CheckResult, Confidence, Status
@@ -145,9 +148,18 @@ async def check_bazaar_index_status(url: str, bazaar_client: Optional[Any]) -> O
     from cdp.openapi_client.exceptions import ApiException
     from cdp.openapi_client.models.x402_validate_request import X402ValidateRequest
 
+    request = X402ValidateRequest(resource=url, method="GET")
     try:
-        response = await bazaar_client.validate_x402_resource(
-            X402ValidateRequest(resource=url, method="GET")
+        if hasattr(bazaar_client, "validate_x402_resource_without_preload_content"):
+            response = await _validate_raw(bazaar_client, request)
+        else:
+            response = await bazaar_client.validate_x402_resource(request)
+    except _CdpHttpError as e:
+        return CheckResult(
+            check_id=CHECK_ID,
+            status=Status.SKIP,
+            detail=f"Couldn't reach CDP's Bazaar validation API (HTTP {e.status}: {e.reason}) -- skipping live index-status lookup.",
+            confidence=Confidence.CLIENT,
         )
     except ApiException as e:
         return CheckResult(
@@ -165,6 +177,48 @@ async def check_bazaar_index_status(url: str, bazaar_client: Optional[Any]) -> O
         )
 
     return _result_from_validate_response(response)
+
+
+class _CdpHttpError(Exception):
+    def __init__(self, status: int, reason: str):
+        super().__init__(f"HTTP {status}: {reason}")
+        self.status = status
+        self.reason = reason
+
+
+def _snake(key: str) -> str:
+    return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", key).lower()
+
+
+def _to_namespace(value: Any) -> Any:
+    """camelCase JSON -> SimpleNamespace with snake_case attributes, the
+    same attribute names the SDK's pydantic models expose, so
+    _result_from_validate_response reads both shapes identically."""
+    if isinstance(value, dict):
+        return SimpleNamespace(**{_snake(k): _to_namespace(v) for k, v in value.items()})
+    if isinstance(value, list):
+        return [_to_namespace(v) for v in value]
+    return value
+
+
+async def _validate_raw(bazaar_client: Any, request: Any) -> Any:
+    """Call validate_x402_resource but parse CDP's JSON ourselves.
+
+    Why: the SDK's generated response model validates every preflight
+    check name against a fixed enum (reachable, returns_402,
+    has_bazaar_extension, parse). CDP's live API has since added new
+    check names (e.g. "url_valid", seen 2026-09-29) and cdp-sdk 1.48.1,
+    the latest release, rejects the WHOLE response over one unknown
+    label -- which made every live index lookup fail. Reading the raw
+    body keeps us working whenever CDP adds checks, and an unknown check
+    name still flows through to the report as a label.
+    """
+    raw = await bazaar_client.validate_x402_resource_without_preload_content(request)
+    body = await raw.read()
+    status = getattr(raw, "status", 200)
+    if status >= 400:
+        raise _CdpHttpError(status, str(getattr(raw, "reason", "") or ""))
+    return _to_namespace(json.loads(body))
 
 
 def _result_from_validate_response(response: Any) -> CheckResult:
