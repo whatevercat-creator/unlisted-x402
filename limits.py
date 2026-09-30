@@ -171,6 +171,16 @@ class EconomicCeiling:
 # --------------------------------------------------------------------------
 
 
+def _domain_and_loggable_url(url: str) -> tuple[Optional[str], str]:
+    """(hostname, url without its query string) for the log lines. Query
+    strings can carry the target's API keys -- never log them."""
+    try:
+        parsed = urlparse(url)
+        return parsed.hostname, parsed._replace(query="").geturl()
+    except ValueError:
+        return None, url.split("?", 1)[0]
+
+
 def log_submission(
     url: str,
     *,
@@ -186,14 +196,11 @@ def log_submission(
     like Render to capture) rather than a formatted message, so this is
     grep/jq-able later without needing a real log pipeline yet.
     """
-    try:
-        domain = urlparse(url).hostname
-    except ValueError:
-        domain = None
+    domain, logged_url = _domain_and_loggable_url(url)
 
     record = {
         "event": "diagnose_submission",
-        "url": url,
+        "url": logged_url,
         "domain": domain,
         "blocked": blocked,
         "reason": reason,
@@ -225,14 +232,7 @@ def log_usage(
         counts[status] = counts.get(status, 0) + 1
         if c.check_id == "settlement_echo":
             settlement = status
-    try:
-        parsed = urlparse(url)
-        domain = parsed.hostname
-        # Query strings can carry the target's API keys -- never log them.
-        logged_url = parsed._replace(query="").geturl()
-    except ValueError:
-        domain = None
-        logged_url = url.split("?", 1)[0]
+    domain, logged_url = _domain_and_loggable_url(url)
     record = {
         "event": "diagnose_usage",
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),

@@ -218,3 +218,14 @@ def test_log_submission_handles_unparseable_url_gracefully(caplog):
         log_submission("not a url at all", blocked=True, reason="invalid")
     record = json.loads(caplog.records[0].message)
     assert record["url"] == "not a url at all"
+
+
+def test_log_submission_drops_query_string(caplog):
+    with caplog.at_level(logging.INFO, logger="x402_doctor"):
+        log_submission(
+            "https://api.example.com/data?api_key=secret123&x=1", blocked=False
+        )
+    record = json.loads(caplog.records[0].message)
+    assert record["url"] == "https://api.example.com/data"
+    assert record["domain"] == "api.example.com"
+    assert "secret123" not in caplog.records[0].message
