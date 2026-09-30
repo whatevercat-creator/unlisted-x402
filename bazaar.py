@@ -109,7 +109,9 @@ def build_bazaar_client() -> Any:
     return X402FacilitatorApi(api_client=cdp_client.cdp_api_client)
 
 
-async def check_bazaar_index_status(url: str, bazaar_client: Optional[Any]) -> Optional[CheckResult]:
+async def check_bazaar_index_status(
+    url: str, bazaar_client: Optional[Any], method: str = "GET"
+) -> Optional[CheckResult]:
     """Ask CDP whether `url` is currently indexed in the Bazaar catalog,
     via a single validate_x402_resource call, and turn the result into a
     CheckResult.
@@ -148,7 +150,7 @@ async def check_bazaar_index_status(url: str, bazaar_client: Optional[Any]) -> O
     from cdp.openapi_client.exceptions import ApiException
     from cdp.openapi_client.models.x402_validate_request import X402ValidateRequest
 
-    request = X402ValidateRequest(resource=url, method="GET")
+    request = X402ValidateRequest(resource=url, method=method if method in ("GET", "POST") else "GET")
     try:
         if hasattr(bazaar_client, "validate_x402_resource_without_preload_content"):
             response = await _validate_raw(bazaar_client, request)

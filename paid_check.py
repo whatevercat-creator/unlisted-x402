@@ -67,6 +67,7 @@ from outbound_payment import (
     select_payable_accept,
     usd_price_of_accept,
 )
+from dry_check import _body_kwargs
 from safe_fetch import FetchError, SSRFBlocked, safe_fetch
 
 
@@ -77,6 +78,8 @@ async def run_paid_check(
     economic_ceiling: EconomicCeiling,
     transport: Optional[Any] = None,
     bazaar_client: Optional[Any] = None,
+    method: str = "GET",
+    json_body: Optional[Any] = None,
 ) -> DiagnosisReport:
     """Run the dry checks against `url`, then attempt a real outbound test
     payment if (and only if) it's safe to, per this module's docstring.
@@ -96,7 +99,7 @@ async def run_paid_check(
     request against a real seller would exercise the same challenge and
     the same paid retry.
     """
-    response = await safe_fetch(url, method="GET", transport=transport)
+    response = await safe_fetch(url, method=method, transport=transport, **_body_kwargs(json_body))
 
     if response.status_code != 402:
         return DiagnosisReport(
@@ -131,10 +134,12 @@ async def run_paid_check(
         signer=signer,
         economic_ceiling=economic_ceiling,
         transport=transport,
+        method=method,
+        json_body=json_body,
     )
     checks.append(settlement_check)
 
-    bazaar_check = await check_bazaar_index_status(response.url, bazaar_client)
+    bazaar_check = await check_bazaar_index_status(response.url, bazaar_client, method)
     if bazaar_check is not None:
         checks.append(bazaar_check)
 
@@ -154,6 +159,8 @@ async def _run_settlement_echo_check(
     signer: Any,
     economic_ceiling: EconomicCeiling,
     transport: Optional[Any],
+    method: str = "GET",
+    json_body: Optional[Any] = None,
 ) -> CheckResult:
     accept = select_payable_accept(accepts)
     if accept is None:
@@ -191,6 +198,8 @@ async def _run_settlement_echo_check(
             max_price_usd=economic_ceiling.per_request_cap,
             price_usd=price_usd,
             transport=transport,
+            method=method,
+            json_body=json_body,
         )
     except (SSRFBlocked, FetchError) as e:
         return CheckResult(

@@ -61,7 +61,7 @@ import json
 import logging
 import os
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
@@ -69,7 +69,7 @@ from html import escape
 
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 
 import bazaar
@@ -119,8 +119,27 @@ economic_ceiling = EconomicCeiling(
 )
 
 
+MAX_TARGET_BODY_BYTES = 8_192
+
+
 class DiagnoseRequest(BaseModel):
     url: HttpUrl = Field(..., description="The x402-protected resource URL to diagnose")
+    method: Literal["GET", "POST"] = Field(
+        "GET", description="HTTP method the target route uses. Default GET."
+    )
+    body: Optional[dict[str, Any]] = Field(
+        None,
+        description="JSON body to send to a POST target (e.g. its example request). POST only.",
+    )
+
+    @model_validator(mode="after")
+    def _body_only_for_post(self):
+        if self.body is not None:
+            if self.method != "POST":
+                raise ValueError("`body` is only allowed when method is POST")
+            if len(json.dumps(self.body)) > MAX_TARGET_BODY_BYTES:
+                raise ValueError(f"`body` must be under {MAX_TARGET_BODY_BYTES} bytes as JSON")
+        return self
 
 
 class Mirror402ChallengeMiddleware(BaseHTTPMiddleware):
@@ -253,6 +272,13 @@ def create_app(
     async def diagnose(payload: DiagnoseRequest, request: Request) -> dict[str, Any]:
         url = str(payload.url)
         mode = "paid" if request.query_params.get("mode") == "paid" else "dry"
+        # Only passed when non-default, so GET callers (and single-argument
+        # test fakes of run_dry_check) see exactly the old call shape.
+        target_kwargs: dict[str, Any] = {}
+        if payload.method != "GET":
+            target_kwargs["method"] = payload.method
+        if payload.body is not None:
+            target_kwargs["json_body"] = payload.body
         caller = _caller_key(request)
         domain = _target_domain(url)
 
@@ -305,9 +331,12 @@ def create_app(
                     economic_ceiling=economic_ceiling,
                     transport=outbound_transport,
                     bazaar_client=bazaar_client,
+                    **target_kwargs,
                 )
             elif bazaar_client is not None:
-                report = await run_dry_check(url, bazaar_client=bazaar_client)
+                report = await run_dry_check(url, bazaar_client=bazaar_client, **target_kwargs)
+            elif target_kwargs:
+                report = await run_dry_check(url, **target_kwargs)
             else:
                 # Passing bazaar_client=None explicitly (rather than just
                 # omitting it) would break every test in this codebase that
@@ -329,7 +358,11 @@ def create_app(
         # Top-level answer first: is it in the Bazaar right now? Everything
         # else (verdict, per-check detail) follows unchanged.
         body = asdict(report)
-        return {"bazaar": bazaar.summarize_index_status(report.checks), **body}
+        return {
+            "bazaar": bazaar.summarize_index_status(report.checks),
+            **body,
+            "method": payload.method,
+        }
 
     @fastapi_app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
@@ -414,7 +447,7 @@ footer {{ margin-top:48px; color:var(--muted); font-size:0.9rem; }}
 Content-Type: application/json
 
 {{"url": "https://your-api.example.com/paid-route"}}</pre>
-<p>Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
+<p>For a <code>POST</code> route, add <code>"method": "POST"</code> and, if it needs one, a sample <code>"body"</code>. Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
 
 <footer><a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/healthz">Status</a></footer>
 </main></body></html>"""

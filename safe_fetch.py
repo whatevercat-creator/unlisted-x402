@@ -148,6 +148,7 @@ def _request_to_resolved_ip(
     url: httpx.URL,
     resolved: ResolvedTarget,
     headers: Optional[dict] = None,
+    content: Optional[bytes] = None,
 ) -> httpx.Request:
     """Build a request that connects to the validated IP directly while
     still presenting the original hostname as the Host header and TLS SNI.
@@ -156,7 +157,7 @@ def _request_to_resolved_ip(
     hostname up a second time.
     """
     ip_url = url.copy_with(host=resolved.ip)
-    req = client.build_request(method, ip_url, headers=headers or {})
+    req = client.build_request(method, ip_url, headers=headers or {}, content=content)
     req.headers["host"] = url.host
     req.extensions["sni_hostname"] = url.host
     return req
@@ -186,8 +187,13 @@ async def safe_fetch(
     max_wire_bytes: int = 2_000_000,
     max_decompressed_bytes: int = 10_000_000,
     transport: Optional[httpx.AsyncBaseTransport] = None,
+    content: Optional[bytes] = None,
 ) -> SafeResponse:
     """Fetch `url` the SSRF-safe way.
+
+    `content` is an optional request body (for POST targets). On a 301/302/
+    303 redirect a non-GET request becomes a body-less GET, as browsers and
+    httpx do; 307/308 keep the method and body.
 
     - Resolves and validates before every connection, including after each
       redirect hop (redirects are handled manually; httpx's automatic
@@ -222,7 +228,7 @@ async def safe_fetch(
             port = current_url.port or (443 if current_url.scheme == "https" else 80)
             resolved = await resolve_and_validate(current_url.host, port)
 
-            req = _request_to_resolved_ip(client, method, current_url, resolved, headers)
+            req = _request_to_resolved_ip(client, method, current_url, resolved, headers, content)
 
             try:
                 response = await client.send(req, stream=True)
@@ -244,6 +250,8 @@ async def safe_fetch(
                     raise FetchError("Redirect response missing Location header")
                 redirect_chain.append(str(current_url))
                 current_url = current_url.join(location)
+                if response.status_code in (301, 302, 303) and method != "GET":
+                    method, content = "GET", None
                 continue
 
             return SafeResponse(

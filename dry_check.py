@@ -31,7 +31,13 @@ from diagnosis import (
 from safe_fetch import FetchError, SSRFBlocked, safe_fetch
 
 
-async def run_dry_check(url: str, *, bazaar_client: Optional[Any] = None) -> DiagnosisReport:
+async def run_dry_check(
+    url: str,
+    *,
+    bazaar_client: Optional[Any] = None,
+    method: str = "GET",
+    json_body: Optional[Any] = None,
+) -> DiagnosisReport:
     """Fetch `url` the SSRF-safe way and diagnose the 402 challenge it
     returns. Never raises for an ordinary "this endpoint has problems"
     outcome -- SSRFBlocked and FetchError are the only two ways this can
@@ -39,7 +45,7 @@ async def run_dry_check(url: str, *, bazaar_client: Optional[Any] = None) -> Dia
     callers (the future /diagnose endpoint) should turn into a 4xx rather
     than a diagnosis report.
     """
-    response = await safe_fetch(url, method="GET")
+    response = await safe_fetch(url, method=method, **_body_kwargs(json_body))
 
     if response.status_code != 402:
         return DiagnosisReport(
@@ -77,7 +83,7 @@ async def run_dry_check(url: str, *, bazaar_client: Optional[Any] = None) -> Dia
 
     checks = run_checks(challenge, final_url=response.url)
 
-    bazaar_check = await check_bazaar_index_status(response.url, bazaar_client)
+    bazaar_check = await check_bazaar_index_status(response.url, bazaar_client, method)
     if bazaar_check is not None:
         checks.append(bazaar_check)
 
@@ -88,6 +94,18 @@ async def run_dry_check(url: str, *, bazaar_client: Optional[Any] = None) -> Dia
         checks=checks,
         verdict=summarize(checks),
     )
+
+
+def _body_kwargs(json_body: Optional[Any]) -> dict:
+    """safe_fetch kwargs for an optional JSON request body."""
+    if json_body is None:
+        return {}
+    import json
+
+    return {
+        "content": json.dumps(json_body).encode(),
+        "headers": {"content-type": "application/json"},
+    }
 
 
 __all__ = ["run_dry_check", "DiagnosisReport", "CheckResult", "Status", "Confidence", "SSRFBlocked", "FetchError"]

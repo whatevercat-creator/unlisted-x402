@@ -140,8 +140,11 @@ async def attempt_payment(
     price_usd: Optional[float] = None,
     transport: Optional[httpx.AsyncBaseTransport] = None,
     timeout: float = 20.0,
+    method: str = "GET",
+    json_body: Optional[Any] = None,
 ) -> PaymentTestOutcome:
-    """Replay `url` (GET) with a real, signed x402 payment attached, and
+    """Replay `url` (with `method`, and `json_body` for POST targets) with a
+    real, signed x402 payment attached, and
     report what happened.
 
     `transport` defaults to a fresh SSRFSafeTransport (real network,
@@ -163,7 +166,7 @@ async def attempt_payment(
 
     try:
         async with httpx.AsyncClient(transport=payment_transport, timeout=timeout) as http:
-            response = await http.get(url)
+            response = await http.request(method, url, json=json_body)
     except PaymentError as e:
         # The SDK's own spend_controls refused to sign a payment for this
         # amount -- should only happen if the target's price changed

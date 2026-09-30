@@ -126,6 +126,15 @@ BAZAAR_EXTENSION = declare_discovery_extension(
                 "description": "Full https URL of the x402-protected endpoint to diagnose. "
                 "Add ?mode=paid to /diagnose itself to also make one real test payment.",
             },
+            "method": {
+                "type": "string",
+                "enum": ["GET", "POST"],
+                "description": "HTTP method the target route uses (default GET).",
+            },
+            "body": {
+                "type": "object",
+                "description": "JSON body to send to a POST target, e.g. its example request.",
+            },
         },
         "required": ["url"],
     },
