@@ -207,7 +207,7 @@ def log_usage(
     url: str,
     method: str,
     mode: str,
-    paid: bool,
+    paywall_active: bool,
     payer: Optional[str],
     report: Any,
     bazaar_summary: dict,
@@ -226,17 +226,21 @@ def log_usage(
         if c.check_id == "settlement_echo":
             settlement = status
     try:
-        domain = urlparse(url).hostname
+        parsed = urlparse(url)
+        domain = parsed.hostname
+        # Query strings can carry the target's API keys -- never log them.
+        logged_url = parsed._replace(query="").geturl()
     except ValueError:
         domain = None
+        logged_url = url.split("?", 1)[0]
     record = {
         "event": "diagnose_usage",
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "domain": domain,
-        "url": url,
+        "url": logged_url,
         "method": method,
         "mode": mode,
-        "paid": paid,
+        "paywall_active": paywall_active,
         "payer": payer,
         "target_http_status": getattr(report, "http_status", None),
         "bazaar": bazaar_summary.get("status"),

@@ -56,7 +56,7 @@ def test_usage_line_for_paid_diagnosis_includes_payer_and_result(monkeypatch, ca
     [rec] = _usage_records(caplog)
     assert rec["domain"] == "api.example.com"
     assert rec["method"] == "GET" and rec["mode"] == "dry"
-    assert rec["paid"] is True and rec["payer"] == PAYER
+    assert rec["paywall_active"] is True and rec["payer"] == PAYER
     assert rec["bazaar"] == "not_indexed_would_be_accepted"
     assert rec["checks"] == {"pass": 1, "fail": 1, "warn": 1}
     assert rec["target_http_status"] == 402
@@ -81,4 +81,19 @@ def test_usage_line_in_dev_mode_marks_unpaid(monkeypatch, caplog):
     with caplog.at_level(logging.INFO, logger="x402_doctor"):
         TestClient(app).post("/diagnose", json={"url": URL, "method": "POST"})
     [rec] = _usage_records(caplog)
-    assert rec["paid"] is False and rec["payer"] is None and rec["method"] == "POST"
+    assert rec["paywall_active"] is False and rec["payer"] is None and rec["method"] == "POST"
+
+
+def test_usage_line_drops_query_string(monkeypatch, caplog):
+    monkeypatch.delenv("X402_DOCTOR_ENABLE_BAZAAR_LOOKUP", raising=False)
+    app = main.create_app()
+
+    async def fake(url, **kwargs):
+        return _report(url)
+
+    monkeypatch.setattr(main, "run_dry_check", fake)
+    with caplog.at_level(logging.INFO, logger="x402_doctor"):
+        TestClient(app).post("/diagnose", json={"url": URL + "?api_key=secret123&x=1"})
+    [rec] = _usage_records(caplog)
+    assert rec["url"] == URL
+    assert "secret123" not in json.dumps(rec)

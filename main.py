@@ -379,7 +379,7 @@ def create_app(
             url=url,
             method=payload.method,
             mode=mode,
-            paid=paywall_active,
+            paywall_active=paywall_active,
             payer=_payer_from_request(request),
             report=report,
             bazaar_summary=bazaar_summary,
