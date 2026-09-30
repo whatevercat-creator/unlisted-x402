@@ -19,12 +19,13 @@ real endpoint under cover of "testing" it.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import logging
 import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Callable, Deque, Dict, Optional
+from typing import Any, Callable, Deque, Dict, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger("x402_doctor")
@@ -197,5 +198,50 @@ def log_submission(
         "blocked": blocked,
         "reason": reason,
         "caller": caller,
+    }
+    logger.info(json.dumps(record))
+
+
+def log_usage(
+    *,
+    url: str,
+    method: str,
+    mode: str,
+    paid: bool,
+    payer: Optional[str],
+    report: Any,
+    bazaar_summary: dict,
+    duration_ms: int,
+) -> None:
+    """One JSON line per *completed* diagnosis -- the usage record: who
+    used Unlisted, on what, and what they got back. Paired with
+    log_submission (every attempt, incl. blocked ones). grep Render's logs
+    for "diagnose_usage" to count real usage."""
+    checks = getattr(report, "checks", []) or []
+    counts: dict[str, int] = {}
+    settlement = None
+    for c in checks:
+        status = getattr(c.status, "value", str(c.status))
+        counts[status] = counts.get(status, 0) + 1
+        if c.check_id == "settlement_echo":
+            settlement = status
+    try:
+        domain = urlparse(url).hostname
+    except ValueError:
+        domain = None
+    record = {
+        "event": "diagnose_usage",
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "domain": domain,
+        "url": url,
+        "method": method,
+        "mode": mode,
+        "paid": paid,
+        "payer": payer,
+        "target_http_status": getattr(report, "http_status", None),
+        "bazaar": bazaar_summary.get("status"),
+        "checks": counts,
+        "settlement": settlement,
+        "duration_ms": duration_ms,
     }
     logger.info(json.dumps(record))

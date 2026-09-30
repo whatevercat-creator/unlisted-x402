@@ -60,6 +60,7 @@ import binascii
 import json
 import logging
 import os
+import time
 from dataclasses import asdict
 from typing import Any, Literal, Optional
 from urllib.parse import urlparse
@@ -76,7 +77,7 @@ import bazaar
 import outbound_payment
 import payment
 from dry_check import run_dry_check
-from limits import EconomicCeiling, RateLimitExceeded, SlidingWindowRateLimiter, log_submission
+from limits import EconomicCeiling, RateLimitExceeded, SlidingWindowRateLimiter, log_submission, log_usage
 from paid_check import run_paid_check
 from safe_fetch import FetchError, SSRFBlocked
 
@@ -163,6 +164,20 @@ class Mirror402ChallengeMiddleware(BaseHTTPMiddleware):
         headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
         headers["WWW-Authenticate"] = "Payment"
         return Response(content=body, status_code=402, headers=headers, media_type="application/json")
+
+
+def _payer_from_request(request: Request) -> Optional[str]:
+    """Best-effort payer address from the x402 v2 PAYMENT-SIGNATURE header
+    (payload.authorization.from for the exact EVM scheme). Only used for
+    the usage log; never raises."""
+    header = request.headers.get("payment-signature") or request.headers.get("x-payment")
+    if not header:
+        return None
+    try:
+        data = json.loads(base64.b64decode(header))
+        return data.get("payload", {}).get("authorization", {}).get("from")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _target_domain(url: str) -> str:
@@ -270,6 +285,7 @@ def create_app(
 
     @fastapi_app.post("/diagnose")
     async def diagnose(payload: DiagnoseRequest, request: Request) -> dict[str, Any]:
+        started = time.monotonic()
         url = str(payload.url)
         mode = "paid" if request.query_params.get("mode") == "paid" else "dry"
         # Only passed when non-default, so GET callers (and single-argument
@@ -358,8 +374,19 @@ def create_app(
         # Top-level answer first: is it in the Bazaar right now? Everything
         # else (verdict, per-check detail) follows unchanged.
         body = asdict(report)
+        bazaar_summary = bazaar.summarize_index_status(report.checks)
+        log_usage(
+            url=url,
+            method=payload.method,
+            mode=mode,
+            paid=paywall_active,
+            payer=_payer_from_request(request),
+            report=report,
+            bazaar_summary=bazaar_summary,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
         return {
-            "bazaar": bazaar.summarize_index_status(report.checks),
+            "bazaar": bazaar_summary,
             **body,
             "method": payload.method,
         }
