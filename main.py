@@ -293,6 +293,8 @@ def create_app(
             "Checks CDP's own live index status, and in paid mode makes a real test "
             "payment to your endpoint and reports whether it settled."
         ),
+        # x402scan verifies origin ownership via info.contact.email in /openapi.json.
+        contact={"email": "hi@unlisted.sh"},
     )
 
     @fastapi_app.post("/diagnose")

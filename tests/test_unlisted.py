@@ -80,6 +80,11 @@ def test_root_page_not_in_openapi_and_title_renamed():
     assert "/" not in schema["paths"]
 
 
+def test_openapi_has_contact_email():
+    schema = TestClient(main.create_app()).get("/openapi.json").json()
+    assert schema["info"]["contact"] == {"email": "hi@unlisted.sh"}
+
+
 def test_own_listing_uses_new_name():
     assert payment.SERVICE_NAME == "Unlisted"
     assert len(payment.SERVICE_NAME) <= 32
