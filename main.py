@@ -184,6 +184,17 @@ def _target_domain(url: str) -> str:
     return urlparse(url).hostname or url
 
 
+# RFC 2606 reserved example domains. Unlisted's marketplace listing shows a
+# sample URL on one of these, and callers paste it verbatim -- reject it
+# up front with a pointer to what's wrong instead of fetching it.
+_EXAMPLE_DOMAINS = ("example.com", "example.org", "example.net")
+
+
+def _is_example_domain(url: str) -> bool:
+    host = (urlparse(url).hostname or "").rstrip(".").lower()
+    return any(host == d or host.endswith("." + d) for d in _EXAMPLE_DOMAINS)
+
+
 def _caller_key(request: Request) -> str:
     # Payment is now verified before this handler ever runs (see
     # PaymentMiddlewareASGI in create_app below), so a payer wallet address
@@ -297,6 +308,16 @@ def create_app(
             target_kwargs["json_body"] = payload.body
         caller = _caller_key(request)
         domain = _target_domain(url)
+
+        if _is_example_domain(url):
+            # 400 before any fetch or rate-limit accounting; like every 4xx
+            # from this handler, the caller's payment is never settled.
+            log_submission(url, blocked=True, reason="example_url", caller=caller)
+            raise HTTPException(
+                status_code=400,
+                detail="That's the sample URL from Unlisted's listing. "
+                "Replace it with your own x402 endpoint URL.",
+            )
 
         try:
             caller_limiter.check_and_record(caller, scope="caller")

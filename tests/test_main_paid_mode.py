@@ -33,7 +33,7 @@ from x402.schemas import SettleResponse, SupportedKind, SupportedResponse, Verif
 from x402.server import x402ResourceServer
 
 SIGNER = Account.create()
-TARGET_URL = "https://target.example.com/sentiment/BTC"
+TARGET_URL = "https://target.seller.test/sentiment/BTC"
 
 
 class FakeSellerFacilitator:

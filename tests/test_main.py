@@ -69,7 +69,7 @@ async def _fake_clean_report(url: str) -> DiagnosisReport:
 def test_diagnose_returns_report_on_success(monkeypatch):
     monkeypatch.setattr(main, "run_dry_check", _fake_clean_report)
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["http_status"] == 402
@@ -84,7 +84,7 @@ def test_diagnose_maps_ssrf_blocked_to_400(monkeypatch):
 
     monkeypatch.setattr(main, "run_dry_check", _raise_ssrf)
 
-    resp = client.post("/diagnose", json={"url": "https://internal.example.com/x"})
+    resp = client.post("/diagnose", json={"url": "https://internal.seller.test/x"})
     assert resp.status_code == 400
     # Deliberately doesn't leak *why* it was blocked -- see main.py's comment.
     assert "blocked" not in resp.json()["detail"].lower()
@@ -96,7 +96,7 @@ def test_diagnose_maps_fetch_error_to_502(monkeypatch):
 
     monkeypatch.setattr(main, "run_dry_check", _raise_fetch_error)
 
-    resp = client.post("/diagnose", json={"url": "https://slow.example.com/x"})
+    resp = client.post("/diagnose", json={"url": "https://slow.seller.test/x"})
     assert resp.status_code == 502
     assert "timeout" in resp.json()["detail"].lower()
 
@@ -107,13 +107,13 @@ def test_diagnose_rate_limits_per_caller(monkeypatch):
     # domain limiter left generous so only the caller limit is exercised
     main.domain_limiter = SlidingWindowRateLimiter(limit=1000, window_seconds=3600)
 
-    first = client.post("/diagnose", json={"url": "https://one.example.com/data"})
+    first = client.post("/diagnose", json={"url": "https://one.seller.test/data"})
     assert first.status_code == 200
 
     # Same caller (TestClient always presents the same client host), a
     # different target domain -- still blocked, because the limit here is
     # per caller, not per domain.
-    second = client.post("/diagnose", json={"url": "https://two.example.com/data"})
+    second = client.post("/diagnose", json={"url": "https://two.seller.test/data"})
     assert second.status_code == 429
 
 
@@ -122,10 +122,10 @@ def test_diagnose_rate_limits_per_target_domain(monkeypatch):
     main.caller_limiter = SlidingWindowRateLimiter(limit=1000, window_seconds=3600)
     main.domain_limiter = SlidingWindowRateLimiter(limit=1, window_seconds=3600)
 
-    first = client.post("/diagnose", json={"url": "https://same.example.com/a"})
+    first = client.post("/diagnose", json={"url": "https://same.seller.test/a"})
     assert first.status_code == 200
 
-    second = client.post("/diagnose", json={"url": "https://same.example.com/b"})
+    second = client.post("/diagnose", json={"url": "https://same.seller.test/b"})
     assert second.status_code == 429
 
 
@@ -138,11 +138,11 @@ def test_diagnose_logs_successful_submission(monkeypatch):
         lambda url, **kwargs: calls.append((url, kwargs)),
     )
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 200
     assert len(calls) == 1
     url, kwargs = calls[0]
-    assert url == "https://api.example.com/data"
+    assert url == "https://api.seller.test/data"
     assert kwargs["blocked"] is False
 
 
@@ -156,7 +156,7 @@ def test_diagnose_logs_blocked_submission_on_rate_limit(monkeypatch):
         lambda url, **kwargs: calls.append((url, kwargs)),
     )
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 429
     assert len(calls) == 1
     assert calls[0][1]["blocked"] is True
@@ -174,6 +174,42 @@ def test_diagnose_maps_unexpected_exception_to_500_without_leaking_detail(monkey
 
     monkeypatch.setattr(main, "run_dry_check", _raise_unexpected)
 
-    resp = no_raise_client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = no_raise_client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 500
     assert "some internal bug" not in resp.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/data",
+        "https://api.example.com/data",
+        "https://your-api.example.org/x",
+        "https://EXAMPLE.NET./x",
+    ],
+)
+def test_diagnose_rejects_example_domains_without_fetching(monkeypatch, url):
+    async def _must_not_fetch(url: str):
+        raise AssertionError("example domain should be rejected before fetching")
+
+    monkeypatch.setattr(main, "run_dry_check", _must_not_fetch)
+    calls = []
+    monkeypatch.setattr(main, "log_submission", lambda url, **kwargs: calls.append((url, kwargs)))
+
+    resp = client.post("/diagnose", json={"url": url})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == (
+        "That's the sample URL from Unlisted's listing. "
+        "Replace it with your own x402 endpoint URL."
+    )
+    assert len(calls) == 1
+    assert calls[0][1]["blocked"] is True
+    assert calls[0][1]["reason"] == "example_url"
+
+
+@pytest.mark.parametrize("url", ["https://myexample.io/data", "https://example.com.evil.io/x"])
+def test_diagnose_does_not_block_lookalike_domains(monkeypatch, url):
+    monkeypatch.setattr(main, "run_dry_check", _fake_clean_report)
+
+    resp = client.post("/diagnose", json={"url": url})
+    assert resp.status_code == 200

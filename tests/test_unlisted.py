@@ -53,7 +53,7 @@ def test_diagnose_response_leads_with_bazaar_answer(monkeypatch):
     monkeypatch.delenv("X402_DOCTOR_ENABLE_BAZAAR_LOOKUP", raising=False)
     app = main.create_app()
     monkeypatch.setattr(main, "run_dry_check", fake, raising=False)
-    resp = TestClient(app).post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = TestClient(app).post("/diagnose", json={"url": "https://api.seller.test/data"})
 
     assert resp.status_code == 200
     body = resp.json()
@@ -90,7 +90,7 @@ def test_root_page_stays_free_with_paywall_active():
 
     client, _ = _build_paid_client()
     assert client.get("/").status_code == 200
-    assert client.post("/diagnose", json={"url": "https://api.example.com/x"}).status_code == 402
+    assert client.post("/diagnose", json={"url": "https://api.seller.test/x"}).status_code == 402
 
 
 def test_402_body_mirrors_payment_required_header():
@@ -98,7 +98,7 @@ def test_402_body_mirrors_payment_required_header():
     from test_payment import _build_paid_client
 
     client, _ = _build_paid_client()
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/x"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/x"})
     assert resp.status_code == 402
     decoded = json.loads(base64.b64decode(resp.headers["payment-required"]))
     assert resp.json() == decoded
@@ -110,8 +110,8 @@ def test_paid_mode_402_body_carries_paid_price():
     from test_payment import _build_paid_client
 
     client, _ = _build_paid_client()
-    dry = client.post("/diagnose", json={"url": "https://api.example.com/x"}).json()
-    paid = client.post("/diagnose?mode=paid", json={"url": "https://api.example.com/x"}).json()
+    dry = client.post("/diagnose", json={"url": "https://api.seller.test/x"}).json()
+    paid = client.post("/diagnose?mode=paid", json={"url": "https://api.seller.test/x"}).json()
     assert int(paid["accepts"][0]["amount"]) > int(dry["accepts"][0]["amount"])
 
 
@@ -119,7 +119,7 @@ def test_own_route_declares_bazaar_extension_for_json_body():
     from test_payment import _build_paid_client
 
     client, _ = _build_paid_client()
-    challenge = client.post("/diagnose", json={"url": "https://api.example.com/x"}).json()
+    challenge = client.post("/diagnose", json={"url": "https://api.seller.test/x"}).json()
     bazaar_ext = challenge["extensions"]["bazaar"]
     info_input = bazaar_ext["info"]["input"]
     assert info_input["method"] == "POST"

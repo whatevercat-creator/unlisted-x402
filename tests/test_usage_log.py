@@ -9,7 +9,7 @@ import main
 from diagnosis import CheckResult, Confidence, DiagnosisReport, Status
 from test_payment import PAYER, _build_paid_client, _payment_signature_header_for
 
-URL = "https://api.example.com/data"
+URL = "https://api.seller.test/data"
 
 
 def _report(url, **kwargs):
@@ -54,7 +54,7 @@ def test_usage_line_for_paid_diagnosis_includes_payer_and_result(monkeypatch, ca
 
     assert resp.status_code == 200
     [rec] = _usage_records(caplog)
-    assert rec["domain"] == "api.example.com"
+    assert rec["domain"] == "api.seller.test"
     assert rec["method"] == "GET" and rec["mode"] == "dry"
     assert rec["paywall_active"] is True and rec["payer"] == PAYER
     assert rec["bazaar"] == "not_indexed_would_be_accepted"

@@ -126,7 +126,7 @@ def test_create_app_with_no_args_and_no_env_runs_unpaid(monkeypatch):
 
 def test_create_app_wires_paywall_when_client_and_pay_to_given():
     client, fake = _build_paid_client()
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 402
     assert "payment-required" in resp.headers
 
@@ -146,7 +146,7 @@ def test_healthz_stays_free_even_with_paywall_wired():
 
 def test_diagnose_without_payment_returns_402_challenge():
     client, fake = _build_paid_client()
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 402
     assert len(fake.verify_calls) == 0  # never even gets that far without a payment header
 
@@ -168,7 +168,7 @@ def test_diagnose_challenge_carries_bazaar_service_metadata():
     entire point of the product, so it's worth a direct assertion rather
     than trusting it because the SDK "should" do it."""
     client, fake = _build_paid_client()
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     challenge = _decode_challenge(resp)
     resource = challenge["resource"]
     assert resource["serviceName"] == payment.SERVICE_NAME
@@ -185,7 +185,7 @@ def test_diagnose_with_valid_payment_settles_and_returns_report(monkeypatch):
     client, fake = _build_paid_client()
 
     # First request just to obtain a real, correctly-shaped challenge to pay against.
-    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.example.com/data"}))
+    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.seller.test/data"}))
     header = _payment_signature_header_for(challenge)
 
     async def _fake_report(url: str):
@@ -210,7 +210,7 @@ def test_diagnose_with_valid_payment_settles_and_returns_report(monkeypatch):
 
     resp = client.post(
         "/diagnose",
-        json={"url": "https://api.example.com/data"},
+        json={"url": "https://api.seller.test/data"},
         headers={"PAYMENT-SIGNATURE": header},
     )
     assert resp.status_code == 200
@@ -226,12 +226,12 @@ def test_diagnose_with_invalid_payment_is_rejected_and_not_settled():
     )
     client, _ = _build_paid_client(facilitator_client=fake)
 
-    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.example.com/data"}))
+    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.seller.test/data"}))
     header = _payment_signature_header_for(challenge)
 
     resp = client.post(
         "/diagnose",
-        json={"url": "https://api.example.com/data"},
+        json={"url": "https://api.seller.test/data"},
         headers={"PAYMENT-SIGNATURE": header},
     )
     assert resp.status_code == 402
@@ -247,14 +247,14 @@ def test_diagnose_rate_limited_after_valid_payment_is_not_settled(monkeypatch):
     payment.py's module docstring)."""
     client, fake = _build_paid_client()
 
-    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.example.com/data"}))
+    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.seller.test/data"}))
     header = _payment_signature_header_for(challenge)
 
     main.caller_limiter = SlidingWindowRateLimiter(limit=0, window_seconds=3600)
 
     resp = client.post(
         "/diagnose",
-        json={"url": "https://api.example.com/data"},
+        json={"url": "https://api.seller.test/data"},
         headers={"PAYMENT-SIGNATURE": header},
     )
     assert resp.status_code == 429
@@ -273,7 +273,7 @@ def test_diagnose_settlement_failure_surfaces_as_402_not_500(monkeypatch):
     )
     client, _ = _build_paid_client(facilitator_client=fake)
 
-    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.example.com/data"}))
+    challenge = _decode_challenge(client.post("/diagnose", json={"url": "https://api.seller.test/data"}))
     header = _payment_signature_header_for(challenge)
 
     async def _fake_report(url: str):
@@ -285,7 +285,7 @@ def test_diagnose_settlement_failure_surfaces_as_402_not_500(monkeypatch):
 
     resp = client.post(
         "/diagnose",
-        json={"url": "https://api.example.com/data"},
+        json={"url": "https://api.seller.test/data"},
         headers={"PAYMENT-SIGNATURE": header},
     )
     assert resp.status_code == 402

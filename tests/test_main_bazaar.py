@@ -40,7 +40,7 @@ def test_bazaar_lookup_disabled_by_default(monkeypatch):
     # pattern test_main.py already relies on.
     client = TestClient(app)
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 200
     assert calls == [{}]  # no bazaar_client kwarg passed at all
 
@@ -55,7 +55,7 @@ def test_bazaar_lookup_disabled_when_env_var_explicitly_false(monkeypatch):
     monkeypatch.setattr(main, "run_dry_check", fake, raising=False)
     client = TestClient(app)
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 200
     assert built == []
     assert calls == [{}]
@@ -71,7 +71,7 @@ def test_bazaar_lookup_enabled_via_env_var_builds_and_wires_client(monkeypatch):
     monkeypatch.setattr(main, "run_dry_check", fake, raising=False)
     client = TestClient(app)
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 200
     assert calls == [{"bazaar_client": sentinel}]
 
@@ -88,6 +88,6 @@ def test_explicit_bazaar_client_overrides_env_var(monkeypatch):
     monkeypatch.setattr(main, "run_dry_check", fake, raising=False)
     client = TestClient(app)
 
-    resp = client.post("/diagnose", json={"url": "https://api.example.com/data"})
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
     assert resp.status_code == 200
     assert calls == [{"bazaar_client": explicit}]
