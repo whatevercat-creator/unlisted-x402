@@ -74,6 +74,9 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <title>x402 endpoint not showing in the Bazaar? 10 causes and fixes | Unlisted</title>
 <meta name="description" content="Why the CDP Bazaar isn't indexing your x402 endpoint: no settled payment yet, a missing extensions.bazaar, an http:// resource URL, a long description, and 6 more causes, each with its fix.">
 <link rel="canonical" href="{CANONICAL_URL}">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/logo.png">
+<meta property="og:image" content="https://unlisted.sh/logo.png">
 <meta property="og:type" content="article">
 <meta property="og:title" content="x402 endpoint not showing in the Bazaar? 10 causes and fixes">
 <meta property="og:description" content="A free guide to why the CDP Bazaar isn't listing your x402 endpoint, and how to fix each cause.">

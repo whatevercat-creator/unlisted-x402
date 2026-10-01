@@ -63,3 +63,15 @@ def test_robots_and_sitemap():
     sitemap = client.get("/sitemap.xml")
     assert sitemap.headers["content-type"].startswith("application/xml")
     assert "<loc>https://unlisted.sh/guide</loc>" in sitemap.text
+
+
+def test_logo_and_favicon_served_free():
+    client = _client()
+    for path, ctype in (("/logo.png", "image/png"), ("/favicon.ico", "image/png"),
+                        ("/logo.svg", "image/svg+xml")):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert resp.headers["content-type"].startswith(ctype)
+    assert client.get("/logo.png").content[:8] == b"\x89PNG\r\n\x1a\n"
+    for page in ("/", "/guide"):
+        assert '<link rel="icon" href="/logo.svg"' in client.get(page).text

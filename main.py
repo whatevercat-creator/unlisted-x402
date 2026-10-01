@@ -431,6 +431,15 @@ def create_app(
     async def guide_page() -> HTMLResponse:
         return HTMLResponse(guide.guide_page(price=price, paid_price=paid_price))
 
+    for _path, _file, _type in (
+        ("/logo.png", "logo.png", "image/png"),
+        ("/favicon.ico", "logo.png", "image/png"),
+        ("/logo.svg", "logo.svg", "image/svg+xml"),
+    ):
+        fastapi_app.add_api_route(
+            _path, _static_route(_file, _type), methods=["GET"], include_in_schema=False
+        )
+
     @fastapi_app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
     async def robots() -> PlainTextResponse:
         return PlainTextResponse(guide.ROBOTS_TXT)
@@ -464,6 +473,29 @@ def create_app(
     return fastapi_app
 
 
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+def _static_route(filename: str, media_type: str):
+    """Serve a small file from ./static (read once at startup), cached for a day."""
+    with open(os.path.join(_STATIC_DIR, filename), "rb") as f:
+        data = f.read()
+
+    async def _serve() -> Response:
+        return Response(
+            content=data, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"}
+        )
+
+    return _serve
+
+
+ICON_LINKS = (
+    '<link rel="icon" href="/logo.svg" type="image/svg+xml">\n'
+    '<link rel="apple-touch-icon" href="/logo.png">\n'
+    '<meta property="og:image" content="https://unlisted.sh/logo.png">'
+)
+
+
 def _home_page(*, price: str, paid_price: str) -> str:
     """Static landing page for unlisted.sh. No user input is rendered."""
     price, paid_price = escape(price), escape(paid_price)
@@ -471,6 +503,7 @@ def _home_page(*, price: str, paid_price: str) -> str:
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Unlisted: why isn't my x402 endpoint in the Bazaar?</title>
+{ICON_LINKS}
 <meta name="description" content="Find out why your x402 endpoint isn't listed in the Coinbase CDP Bazaar, with CDP's live index status and a real test payment.">
 <style>
 :root {{ --bg:#fafaf9; --fg:#1c1917; --muted:#57534e; --card:#fff; --line:#e7e5e4; --accent:#b45309; --code:#f5f5f4; }}
