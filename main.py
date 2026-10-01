@@ -68,12 +68,13 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Request
 from html import escape
 
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 
 import bazaar
+import guide
 import outbound_payment
 import payment
 from dry_check import run_dry_check
@@ -426,6 +427,18 @@ def create_app(
     async def home() -> HTMLResponse:
         return HTMLResponse(_home_page(price=price, paid_price=paid_price))
 
+    @fastapi_app.get("/guide", response_class=HTMLResponse, include_in_schema=False)
+    async def guide_page() -> HTMLResponse:
+        return HTMLResponse(guide.guide_page(price=price, paid_price=paid_price))
+
+    @fastapi_app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+    async def robots() -> PlainTextResponse:
+        return PlainTextResponse(guide.ROBOTS_TXT)
+
+    @fastapi_app.get("/sitemap.xml", include_in_schema=False)
+    async def sitemap() -> Response:
+        return Response(content=guide.SITEMAP_XML, media_type="application/xml")
+
     @fastapi_app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
@@ -482,6 +495,8 @@ footer {{ margin-top:48px; color:var(--muted); font-size:0.9rem; }}
 <h1>unlisted<span>.sh</span></h1>
 <p class="lede">Your x402 endpoint works, but it isn't in the Bazaar. Find out why, and get it there.</p>
 
+<p>Want to fix it yourself? Read the free guide: <a href="/guide">10 reasons an x402 endpoint isn't in the Bazaar</a>.</p>
+
 <h2>What makes it different</h2>
 <div class="card"><b>Asks CDP directly</b>Whether your endpoint is indexed right now, when it was last crawled, and whether CDP's own facilitator would accept it. Ground truth, not a guess.</div>
 <div class="card"><b>Makes the first real payment</b>The CDP Bazaar lists a route after CDP's facilitator settles its first payment, so a new endpoint nobody has paid yet stays unlisted. Paid mode pays your endpoint once for real and reports whether it settled end to end.</div>
@@ -497,7 +512,7 @@ Content-Type: application/json
 {{"url": "https://your-api.example.com/paid-route"}}</pre>
 <p>For a <code>POST</code> route, add <code>"method": "POST"</code> and, if it needs one, a sample <code>"body"</code>. Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
 
-<footer><a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/healthz">Status</a></footer>
+<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/healthz">Status</a></footer>
 </main></body></html>"""
 
 
