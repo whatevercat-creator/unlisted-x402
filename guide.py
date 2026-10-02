@@ -105,7 +105,8 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#post-as-get">A POST route is described as GET</a></li>
 <li><a href="#wildcard">The route uses a bare wildcard</a></li>
 <li><a href="#stale">You changed price or metadata and the listing didn't update</a></li>
-</ol></div>
+</ol>
+<p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>.</p></div>
 
 <h2>Quick triage</h2>
 <div class="scroll"><table>
@@ -114,6 +115,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <tr><td>Real payments have landed, still not listed</td><td><a href="#other-facilitator">2</a>, then <a href="#extension-missing">3</a> and <a href="#description">4</a></td></tr>
 <tr><td>Your app runs behind Render, Railway, Fly, Heroku, nginx or a load balancer</td><td><a href="#http-resource">5</a></td></tr>
 <tr><td>Some x402 clients say there are no payment options</td><td><a href="#empty-body">7</a></td></tr>
+<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#stuck-processing">Known open problem</a></td></tr>
 <tr><td>Listed, but with the wrong method or no input schema</td><td><a href="#post-as-get">8</a></td></tr>
 <tr><td>Listed, but showing an old price or description</td><td><a href="#stale">10</a></td></tr>
 </table></div>
@@ -197,6 +199,15 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <h3>Fix</h3>
 <p>The Bazaar refreshes a route when it re-crawls it, so a change can take a while to show up. Make a new paid call after the change, then check the crawl time again before assuming it's stuck.</p>
 <div class="card check"><b>Check it with Unlisted:</b> when your route is indexed, the <code>bazaar_index_status</code> result includes when CDP last crawled it, plus 30-day calls and unique payers.</div>
+
+<h2 id="stuck-processing">If none of these fit: accepted as &ldquo;processing&rdquo;, never indexed</h2>
+<h3>Symptom</h3>
+<p>Your challenge is valid, a payment settled through CDP's facilitator, and the facilitator answered with <code>bazaar.status: "processing"</code>. CDP's own validation says the route would be accepted. Days later it still isn't in the catalog.</p>
+<h3>What's known</h3>
+<p>Several sellers have reported this, and as of {GUIDE_UPDATED} none of the reports has an answer from a maintainer: <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a>, <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a>, <a href="https://github.com/coinbase/cdp-sdk/issues/830">cdp-sdk #830</a> and <a href="https://github.com/coinbase/cdp-sdk/issues/835">cdp-sdk #835</a>. It looks like a problem on CDP's side, and there is no confirmed fix. &ldquo;Processing&rdquo; is also returned for routes that do get indexed, so that status alone tells you nothing either way.</p>
+<h3>What to try</h3>
+<p>Rule out causes 1 to 10 first, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change, because a settlement made while something was still wrong may not be picked up again. If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
+<div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
 
 <h2>Check all of it in one call</h2>
 <p>Unlisted runs every check above against your endpoint and asks CDP for its live index status. No signup and no API key: you pay per call in USDC on Base through x402, and you're only charged if the check completes.</p>

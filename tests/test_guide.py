@@ -75,3 +75,11 @@ def test_logo_and_favicon_served_free():
     assert client.get("/logo.png").content[:8] == b"\x89PNG\r\n\x1a\n"
     for page in ("/", "/guide"):
         assert '<link rel="icon" href="/logo.svg"' in client.get(page).text
+
+
+def test_guide_covers_stuck_processing_honestly():
+    text = _client().get("/guide").text
+    assert 'id="stuck-processing"' in text
+    assert text.count('href="#stuck-processing"') >= 2
+    assert "no confirmed fix" in text
+    assert "Unlisted can't make CDP index a route" in text
