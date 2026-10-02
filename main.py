@@ -297,6 +297,40 @@ def create_app(
         contact={"email": "hi@unlisted.sh"},
     )
 
+    # Discovery tools (x402scan / @agentcash/discovery) read each operation's
+    # auth mode from the spec: x-payment-info marks a paid route, and
+    # `security: []` marks one as explicitly public so it isn't probed for a 402.
+    _public_op: dict[str, Any] = {"security": []}
+    if paywall_active:
+        diagnose_openapi: dict[str, Any] = {
+            "x-payment-info": {
+                "price": {
+                    "mode": "dynamic",
+                    "currency": "USD",
+                    "min": price.lstrip("$"),
+                    "max": paid_price.lstrip("$"),
+                },
+                "protocols": [{"x402": {}}],
+            }
+        }
+    else:
+        diagnose_openapi = _public_op
+
+    _default_openapi = fastapi_app.openapi
+
+    def _openapi_with_guidance() -> dict[str, Any]:
+        schema = _default_openapi()
+        schema["info"]["x-guidance"] = (
+            'POST /diagnose with a JSON body {"url": "<your x402 endpoint>"}. '
+            "An unpaid request returns HTTP 402; pay with x402 (USDC on Base "
+            f"mainnet) and retry. {price} per check, or {paid_price} with "
+            "?mode=paid, which also makes one real test payment to the target. "
+            "Free guide: https://unlisted.sh/guide"
+        )
+        return schema
+
+    fastapi_app.openapi = _openapi_with_guidance  # type: ignore[method-assign]
+
     @fastapi_app.post(
         "/diagnose",
         summary="Diagnose why an x402 endpoint isn't in the CDP Bazaar",
@@ -306,6 +340,7 @@ def create_app(
             "to the target. An unpaid request returns HTTP 402 with the payment "
             "requirements. You are only charged when the check completes."
         ),
+        openapi_extra=diagnose_openapi,
         responses={
             402: {
                 "description": "Payment required. The requirements are in the "
@@ -482,7 +517,7 @@ def create_app(
     async def sitemap() -> Response:
         return Response(content=guide.SITEMAP_XML, media_type="application/xml")
 
-    @fastapi_app.get("/healthz")
+    @fastapi_app.get("/healthz", openapi_extra=_public_op)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 

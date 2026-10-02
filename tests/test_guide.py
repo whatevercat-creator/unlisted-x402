@@ -118,3 +118,28 @@ def test_openapi_documents_the_402_and_price():
     assert "402" in op["responses"]
     assert payment.DEFAULT_PRICE_USD in op["description"]
     assert "get" not in _client().get("/openapi.json").json()["paths"]["/diagnose"]
+
+
+def test_openapi_auth_modes_for_discovery():
+    from test_payment import _build_paid_client
+
+    paid = _build_paid_client()[0].get("/openapi.json").json()
+    op = paid["paths"]["/diagnose"]["post"]
+    assert op["x-payment-info"] == {
+        "price": {
+            "mode": "dynamic",
+            "currency": "USD",
+            "min": payment.DEFAULT_PRICE_USD.lstrip("$"),
+            "max": payment.DEFAULT_PAID_PRICE_USD.lstrip("$"),
+        },
+        "protocols": [{"x402": {}}],
+    }
+    assert "security" not in op
+    assert paid["paths"]["/healthz"]["get"]["security"] == []
+    assert "POST /diagnose" in paid["info"]["x-guidance"]
+
+    # Without the paywall /diagnose is free, so it's declared public, not paid.
+    free = _client().get("/openapi.json").json()
+    assert "x-payment-info" not in free["paths"]["/diagnose"]["post"]
+    assert free["paths"]["/diagnose"]["post"]["security"] == []
+    assert free["paths"]["/healthz"]["get"]["security"] == []
