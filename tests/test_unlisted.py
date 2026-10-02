@@ -108,7 +108,7 @@ def test_402_body_mirrors_payment_required_header():
     decoded = json.loads(base64.b64decode(resp.headers["payment-required"]))
     assert resp.json() == decoded
     assert resp.json()["accepts"], "body must carry accepts[]"
-    assert resp.headers["www-authenticate"] == "Payment"
+    assert "www-authenticate" not in resp.headers
 
 
 def test_paid_mode_402_body_carries_paid_price():

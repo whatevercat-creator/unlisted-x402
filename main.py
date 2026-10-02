@@ -149,7 +149,9 @@ class Mirror402ChallengeMiddleware(BaseHTTPMiddleware):
     challenge only in the base64 PAYMENT-REQUIRED header. Many x402 clients
     read accepts[] from the body, so copy the decoded header into it (the
     header is left untouched). Same fix as crypto-sentiment-x402 65de7c2.
-    Also adds WWW-Authenticate: Payment for generic HTTP clients."""
+    No WWW-Authenticate header: "Payment" there is the MPP auth scheme, which
+    needs a server-bound challenge and Authorization: Payment credentials we
+    don't accept, and a bare one fails discovery audits (x402scan)."""
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -163,7 +165,6 @@ class Mirror402ChallengeMiddleware(BaseHTTPMiddleware):
             except (ValueError, binascii.Error):
                 logger.warning("could not decode PAYMENT-REQUIRED header; leaving 402 body as-is")
         headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
-        headers["WWW-Authenticate"] = "Payment"
         return Response(content=body, status_code=402, headers=headers, media_type="application/json")
 
 
