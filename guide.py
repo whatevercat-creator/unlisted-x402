@@ -7,7 +7,7 @@ it, so keep those ids in sync with diagnosis.py / bazaar.py / paid_check.py
 (tests/test_guide.py asserts they exist).
 
 Search phrases it targets (title, description, headings): "x402 endpoint
-not showing in Bazaar", "CDP Bazaar not indexing my endpoint", "x402
+not showing in Bazaar", "CDP Bazaar not indexing", "x402
 discovery not listed after payment", "extensions.bazaar missing".
 """
 
@@ -71,22 +71,22 @@ def guide_page(*, price: str, paid_price: str) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>x402 endpoint not showing in the Bazaar? 10 causes and fixes | Unlisted</title>
-<meta name="description" content="Why the CDP Bazaar isn't indexing your x402 endpoint: no settled payment yet, a missing extensions.bazaar, an http:// resource URL, a long description, and 6 more causes, each with its fix.">
+<title>Why your x402 endpoint isn&#x27;t in the CDP Bazaar (and how to fix it) | Unlisted</title>
+<meta name="description" content="Why the CDP Bazaar isn't indexing your x402 endpoint: no settled payment yet, a missing extensions.bazaar, an http:// resource URL, a long description, external schema $refs, and more, each with its fix.">
 <link rel="canonical" href="{CANONICAL_URL}">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/logo.png">
 <meta property="og:image" content="https://unlisted.sh/logo.png">
 <meta property="og:type" content="article">
-<meta property="og:title" content="x402 endpoint not showing in the Bazaar? 10 causes and fixes">
+<meta property="og:title" content="Why your x402 endpoint isn&#x27;t in the CDP Bazaar (and how to fix it)">
 <meta property="og:description" content="A free guide to why the CDP Bazaar isn't listing your x402 endpoint, and how to fix each cause.">
 <meta property="og:url" content="{CANONICAL_URL}">
-<script type="application/ld+json">{{"@context":"https://schema.org","@type":"TechArticle","headline":"x402 endpoint not showing in the Bazaar? 10 causes and fixes","dateModified":"{GUIDE_UPDATED_ISO}","url":"{CANONICAL_URL}","publisher":{{"@type":"Organization","name":"Unlisted","url":"https://unlisted.sh"}}}}</script>
+<script type="application/ld+json">{{"@context":"https://schema.org","@type":"TechArticle","headline":"Why your x402 endpoint isn't in the CDP Bazaar (and how to fix it)","dateModified":"{GUIDE_UPDATED_ISO}","url":"{CANONICAL_URL}","publisher":{{"@type":"Organization","name":"Unlisted","url":"https://unlisted.sh"}}}}</script>
 <style>{_STYLE}</style></head>
 <body><main>
 <nav><a href="/">unlisted.sh</a> &rsaquo; guide</nav>
 
-<h1>x402 endpoint not showing in the Bazaar? 10 causes and fixes</h1>
+<h1>Why your x402 endpoint isn&#x27;t in the CDP Bazaar (and how to fix it)</h1>
 <p class="meta">Updated {GUIDE_UPDATED} &middot; free guide by Unlisted</p>
 
 <p class="lede">Your x402 endpoint returns a 402, takes payment, and works. But it isn't in the CDP Bazaar, so agents searching the catalog never find it. Below is every cause we know of, with the symptom and the fix for each. You can work through it by hand for free.</p>
@@ -103,24 +103,25 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#resource-missing">The resource field is missing</a></li>
 <li><a href="#empty-body">The 402 body is empty or accepts is malformed</a></li>
 <li><a href="#post-as-get">A POST route is described as GET</a></li>
+<li><a href="#schema-refs">External $ref/$id in a schema, or paymentPayload.resource not sent</a></li>
 <li><a href="#wildcard">The route uses a bare wildcard</a></li>
 <li><a href="#stale">You changed price or metadata and the listing didn't update</a></li>
 </ol>
 <p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>.</p></div>
 
-<h2>Quick triage</h2>
+<h2>x402 endpoint not showing in Bazaar: quick triage</h2>
 <div class="scroll"><table>
 <tr><th>What you see</th><th>Most likely cause</th></tr>
 <tr><td>Nobody has paid the route yet</td><td><a href="#no-payment">1</a></td></tr>
 <tr><td>Real payments have landed, still not listed</td><td><a href="#other-facilitator">2</a>, then <a href="#extension-missing">3</a> and <a href="#description">4</a></td></tr>
 <tr><td>Your app runs behind Render, Railway, Fly, Heroku, nginx or a load balancer</td><td><a href="#http-resource">5</a></td></tr>
 <tr><td>Some x402 clients say there are no payment options</td><td><a href="#empty-body">7</a></td></tr>
-<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#stuck-processing">Known open problem</a></td></tr>
+<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#schema-refs">9</a>, then the <a href="#stuck-processing">known open problem</a></td></tr>
 <tr><td>Listed, but with the wrong method or no input schema</td><td><a href="#post-as-get">8</a></td></tr>
-<tr><td>Listed, but showing an old price or description</td><td><a href="#stale">10</a></td></tr>
+<tr><td>Listed, but showing an old price or description</td><td><a href="#stale">11</a></td></tr>
 </table></div>
 
-<h2>Free first step: ask the Bazaar directly</h2>
+<h2>CDP Bazaar not indexing your route? Ask it directly first</h2>
 <p>CDP's discovery API is public. Open this in your browser with your receiving wallet address:</p>
 <pre><code>https://api.cdp.coinbase.com/platform/v2/x402/discovery/merchant?payTo=0xYOUR_PAY_TO_ADDRESS</code></pre>
 <p>If your route shows up there, it's listed. If the list is empty or your route is missing, read on.</p>
@@ -186,14 +187,22 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Declare the body in the discovery metadata. In the Python SDK, pass <code>body_type="json"</code> plus an example <code>input</code> and <code>input_schema</code> to <code>declare_discovery_extension</code>. Make sure the route key says <code>POST</code> too.</p>
 <div class="card check"><b>Check it with Unlisted:</b> send <code>"method": "POST"</code> and a sample <code>"body"</code>. Unlisted probes, pays and asks CDP using the route's real method.</div>
 
-<h2 id="wildcard">9. The route uses a bare wildcard</h2>
+<h2 id="schema-refs">9. External <code>$ref</code>/<code>$id</code> in a schema, or <code>paymentPayload.resource</code> not sent</h2>
+<h3>Symptom</h3>
+<p>Payments settle through CDP and CDP's validation says the route would be accepted, but it never appears in the catalog. Sellers in <a href="https://github.com/x402-foundation/x402/issues/3045">x402 #3045</a> traced this to two things on their side.</p>
+<h3>Fix</h3>
+<p><b>Inline your schemas.</b> If the input schema or <code>output.schema</code> in your Bazaar declaration has a <code>$ref</code> or <code>$id</code> pointing to an external URL, inline the referenced definitions and drop the external <code>$id</code>. In that thread, a <code>$ref</code> in <code>output.schema</code> broke CDP's validator, and a seller who had fixed <code>output.schema</code> was still unlisted until they did the same for the input schema. CDP's <code>/v2/x402/validate</code> passed their route both times. After the fix and a new settlement, it was indexed.</p>
+<p><b>Send <code>paymentPayload.resource</code> when you settle.</b> A maintainer said in that thread that the settle request has to carry it for the discovery job to be submitted, and that settlement succeeds without it. Current SDKs fill it in. Hand-rolled settle code often doesn't. One seller found that adding it alone wasn't enough: they also had to settle with an x402 v2 payload, where <code>resource</code> is an object rather than a URL string.</p>
+<div class="card check"><b>Check it with Unlisted:</b> Unlisted doesn't scan your schemas for external references, and it can't see what your server sends CDP when it settles. A &ldquo;would be accepted&rdquo; result from the {price} Check doesn't rule this cause out. After you fix it, the {paid_price} Check + real payment (<code>?mode=paid</code>) makes the fresh settlement you need.</div>
+
+<h2 id="wildcard">10. The route uses a bare wildcard</h2>
 <h3>Symptom</h3>
 <p>The route is declared as <code>/prices/*</code>, so the listing can't tell agents what goes in the path.</p>
 <h3>Fix</h3>
 <p>Use a named parameter in the paywall's route pattern, such as <code>GET /prices/:symbol</code>, so the discovery metadata names the path parameter.</p>
 {_check_box("route_template", "when your challenge includes <code>routeTemplate</code>, the Check flags a bare <code>*</code> segment.")}
 
-<h2 id="stale">10. You changed price or metadata and the listing didn't update</h2>
+<h2 id="stale">11. You changed price or metadata and the listing didn't update</h2>
 <h3>Symptom</h3>
 <p>The route is listed, but with an old price, description or schema (see <a href="https://github.com/coinbase/cdp-sdk/issues/813">cdp-sdk #813</a>).</p>
 <h3>Fix</h3>
@@ -206,7 +215,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <h3>What's known</h3>
 <p>Several sellers have reported this, and as of {GUIDE_UPDATED} none of the reports has an answer from a maintainer: <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a>, <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a>, <a href="https://github.com/coinbase/cdp-sdk/issues/830">cdp-sdk #830</a> and <a href="https://github.com/coinbase/cdp-sdk/issues/835">cdp-sdk #835</a>. It looks like a problem on CDP's side, and there is no confirmed fix. &ldquo;Processing&rdquo; is also returned for routes that do get indexed, so that status alone tells you nothing either way.</p>
 <h3>What to try</h3>
-<p>Rule out causes 1 to 10 first, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change, because a settlement made while something was still wrong may not be picked up again. If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
+<p>Rule out causes 1 to 11 first, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change, because a settlement made while something was still wrong may not be picked up again. If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
 
 <h2>Check all of it in one call</h2>
@@ -262,7 +271,7 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 
 ## More
 
-- [Free guide: 10 causes and fixes](https://unlisted.sh/guide)
+- [Free guide: Why your x402 endpoint isn't in the CDP Bazaar (and how to fix it)](https://unlisted.sh/guide)
 - [OpenAPI](https://unlisted.sh/openapi.json)
 - Contact: hi@unlisted.sh
 """

@@ -563,7 +563,7 @@ footer {{ margin-top:48px; color:var(--muted); font-size:0.9rem; }}
 <h1>unlisted<span>.sh</span></h1>
 <p class="lede">Your x402 endpoint works, but it isn't in the Bazaar. Find out why, and get it there.</p>
 
-<p>Want to fix it yourself? Read the free guide: <a href="/guide">10 reasons an x402 endpoint isn't in the Bazaar</a>.</p>
+<p>Want to fix it yourself? Read the free guide: <a href="/guide">Why your x402 endpoint isn't in the CDP Bazaar (and how to fix it)</a>.</p>
 
 <h2>What makes it different</h2>
 <div class="card"><b>Asks CDP directly</b>Whether your endpoint is indexed right now, when it was last crawled, and whether CDP's own facilitator would accept it. Ground truth, not a guess.</div>

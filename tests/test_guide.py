@@ -18,7 +18,10 @@ def test_guide_is_free_html_with_both_prices():
     resp = _client().get("/guide")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
-    assert "x402 endpoint not showing in the Bazaar" in resp.text
+    assert "<title>Why your x402 endpoint isn&#x27;t in the CDP Bazaar (and how to fix it) | Unlisted</title>" in resp.text
+    assert "<h2>x402 endpoint not showing in Bazaar: quick triage</h2>" in resp.text
+    assert "CDP Bazaar not indexing" in resp.text
+    assert '<meta name="description"' in resp.text
     assert payment.DEFAULT_PRICE_USD in resp.text
     assert payment.DEFAULT_PAID_PRICE_USD in resp.text
     assert '<link rel="canonical" href="https://unlisted.sh/guide">' in resp.text
@@ -33,11 +36,11 @@ def test_guide_stays_free_with_paywall_active():
     assert client.get("/sitemap.xml").status_code == 200
 
 
-def test_guide_has_ten_anchored_causes():
+def test_guide_has_eleven_anchored_causes():
     text = _client().get("/guide").text
     for anchor in ("no-payment", "other-facilitator", "extension-missing", "description",
                    "http-resource", "resource-missing", "empty-body", "post-as-get",
-                   "wildcard", "stale"):
+                   "schema-refs", "wildcard", "stale"):
         assert f'id="{anchor}"' in text
         assert f'href="#{anchor}"' in text
 
@@ -59,6 +62,7 @@ def test_guide_not_in_openapi_and_linked_from_home():
 def test_robots_and_sitemap():
     client = _client()
     robots = client.get("/robots.txt")
+    assert "User-agent: *\nAllow: /" in robots.text
     assert "Sitemap: https://unlisted.sh/sitemap.xml" in robots.text
     sitemap = client.get("/sitemap.xml")
     assert sitemap.headers["content-type"].startswith("application/xml")
