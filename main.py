@@ -297,7 +297,22 @@ def create_app(
         contact={"email": "hi@unlisted.sh"},
     )
 
-    @fastapi_app.post("/diagnose")
+    @fastapi_app.post(
+        "/diagnose",
+        summary="Diagnose why an x402 endpoint isn't in the CDP Bazaar",
+        description=(
+            f"Paid per call over x402 in USDC on Base mainnet: {price} per check, "
+            f"or {paid_price} with ?mode=paid, which also makes one real test payment "
+            "to the target. An unpaid request returns HTTP 402 with the payment "
+            "requirements. You are only charged when the check completes."
+        ),
+        responses={
+            402: {
+                "description": "Payment required. The requirements are in the "
+                "PAYMENT-REQUIRED header and mirrored in the JSON body."
+            }
+        },
+    )
     async def diagnose(payload: DiagnoseRequest, request: Request) -> dict[str, Any]:
         started = time.monotonic()
         url = str(payload.url)
@@ -442,6 +457,23 @@ def create_app(
             _path, _static_route(_file, _type), methods=["GET"], include_in_schema=False
         )
 
+    @fastapi_app.get("/llms.txt", response_class=PlainTextResponse, include_in_schema=False)
+    async def llms_txt() -> PlainTextResponse:
+        return PlainTextResponse(guide.llms_txt(price=price, paid_price=paid_price))
+
+    @fastapi_app.get("/diagnose", include_in_schema=False)
+    async def diagnose_get_hint() -> JSONResponse:
+        # Probes and crawlers often try GET first. Still a 405, but say what to do.
+        return JSONResponse(
+            status_code=405,
+            headers={"Allow": "POST"},
+            content={
+                "detail": "Use POST. Send JSON like {\"url\": \"https://your-api/paid-route\"}. "
+                "An unpaid POST returns HTTP 402 with the payment requirements.",
+                "docs": "https://unlisted.sh/llms.txt",
+            },
+        )
+
     @fastapi_app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
     async def robots() -> PlainTextResponse:
         return PlainTextResponse(guide.ROBOTS_TXT)
@@ -505,6 +537,7 @@ def _home_page(*, price: str, paid_price: str) -> str:
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Unlisted: why isn't my x402 endpoint in the Bazaar?</title>
+<link rel="canonical" href="https://unlisted.sh/">
 {ICON_LINKS}
 <meta name="description" content="Find out why your x402 endpoint isn't listed in the Coinbase CDP Bazaar, with CDP's live index status and a real test payment.">
 <style>
@@ -547,7 +580,7 @@ Content-Type: application/json
 {{"url": "https://your-api.example.com/paid-route"}}</pre>
 <p>For a <code>POST</code> route, add <code>"method": "POST"</code> and, if it needs one, a sample <code>"body"</code>. Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
 
-<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/healthz">Status</a></footer>
+<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/llms.txt">llms.txt</a> &middot; <a href="/healthz">Status</a></footer>
 </main></body></html>"""
 
 

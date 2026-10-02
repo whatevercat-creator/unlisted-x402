@@ -227,6 +227,47 @@ Unlisted isn't affiliated with Coinbase. &ldquo;CDP&rdquo; and &ldquo;Bazaar&rdq
 </main></body></html>"""
 
 
+def llms_txt(*, price: str, paid_price: str) -> str:
+    """Plain-text summary for AI agents (llms.txt convention). Keep it in
+    step with the /diagnose handler in main.py."""
+    return f"""# Unlisted
+
+> Unlisted tells you why an x402 endpoint isn't listed in the Coinbase CDP Bazaar. Pay per call in USDC on Base mainnet over x402. No signup and no API key: the payment is the auth.
+
+## How to call it
+
+- POST https://unlisted.sh/diagnose with a JSON body: {{"url": "<the x402 endpoint to diagnose>"}}
+- Optional fields: "method" ("GET" or "POST", default "GET") for the target route, and "body" (a JSON object under 8 KB, POST targets only).
+- An unpaid request returns HTTP 402. The payment requirements are in the PAYMENT-REQUIRED header and mirrored in the JSON body. Pay with x402 (scheme "exact", USDC, network eip155:8453) and retry the same request.
+- GET /diagnose is not supported and returns 405. Use POST.
+- Send a real endpoint URL. The sample api.example.com URL is rejected with a 400.
+
+## Price
+
+- Check: {price} per call. Reads the target's 402 challenge and Bazaar declaration, and asks CDP for its live index status.
+- Check + real payment: {paid_price} per call, selected with ?mode=paid on the request URL. Also makes one real test payment to the target. Only for targets priced up to $0.05, and once per target domain per 24 hours.
+- You are only charged when the check completes (HTTP 200). 4xx and 5xx responses are not charged.
+
+## What you get back
+
+- bazaar.indexed: true, false, or null if CDP could not be reached.
+- bazaar.status: "indexed", "not_indexed_would_be_accepted", "not_indexed" or "unknown".
+- checks: a list of results, each with check_id, status ("pass", "fail", "warn" or "skip"), detail and, for failures, a fix.
+- verdict: a one-line summary.
+
+## Limits
+
+- Unlisted reports whether CDP would accept a route and can make a fresh settlement. It cannot make CDP index a route.
+- Rate limits apply per caller and per target domain.
+
+## More
+
+- [Free guide: 10 causes and fixes](https://unlisted.sh/guide)
+- [OpenAPI](https://unlisted.sh/openapi.json)
+- Contact: hi@unlisted.sh
+"""
+
+
 ROBOTS_TXT = "User-agent: *\nAllow: /\nSitemap: https://unlisted.sh/sitemap.xml\n"
 
 SITEMAP_XML = f"""<?xml version="1.0" encoding="UTF-8"?>

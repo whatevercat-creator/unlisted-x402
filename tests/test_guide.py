@@ -83,3 +83,34 @@ def test_guide_covers_stuck_processing_honestly():
     assert text.count('href="#stuck-processing"') >= 2
     assert "no confirmed fix" in text
     assert "Unlisted can't make CDP index a route" in text
+
+
+def test_llms_txt_is_free_plain_text_with_prices():
+    from test_payment import _build_paid_client
+
+    for client in (_client(), _build_paid_client()[0]):
+        resp = client.get("/llms.txt")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/plain")
+        assert resp.text.startswith("# Unlisted")
+        assert payment.DEFAULT_PRICE_USD in resp.text
+        assert payment.DEFAULT_PAID_PRICE_USD in resp.text
+        assert "POST https://unlisted.sh/diagnose" in resp.text
+    assert 'href="/llms.txt"' in _client().get("/").text
+
+
+def test_get_diagnose_is_405_with_a_hint():
+    from test_payment import _build_paid_client
+
+    for client in (_client(), _build_paid_client()[0]):
+        resp = client.get("/diagnose")
+        assert resp.status_code == 405
+        assert resp.headers["allow"] == "POST"
+        assert "Use POST" in resp.json()["detail"]
+
+
+def test_openapi_documents_the_402_and_price():
+    op = _client().get("/openapi.json").json()["paths"]["/diagnose"]["post"]
+    assert "402" in op["responses"]
+    assert payment.DEFAULT_PRICE_USD in op["description"]
+    assert "get" not in _client().get("/openapi.json").json()["paths"]["/diagnose"]
