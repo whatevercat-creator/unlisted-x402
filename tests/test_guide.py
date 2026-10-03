@@ -175,3 +175,26 @@ def test_guide_curation_section_is_honest_about_scope():
     assert "<code>bazaar.curated</code>" in section
     assert "doesn't read agentic.market's <code>enriched</code> field" in section
     assert 'href="#not-curated"' in text
+
+
+def test_guide_visit_logs_referrer_site_and_kind_only(caplog):
+    import json
+    import logging
+
+    client = _client()
+    with caplog.at_level(logging.INFO, logger="x402_doctor"):
+        client.get(
+            "/guide",
+            headers={
+                "referer": "https://www.google.com/search?q=x402+bazaar+not+indexed",
+                "user-agent": "Mozilla/5.0 (Macintosh) Safari/605.1.15",
+            },
+        )
+        client.get("/guide", headers={"user-agent": "Googlebot/2.1"})
+    visits = [json.loads(r.message) for r in caplog.records if "guide_visit" in r.message]
+    assert visits == [
+        {"event": "guide_visit", "referrer": "google.com", "kind": "browser"},
+        {"event": "guide_visit", "referrer": "direct", "kind": "bot"},
+    ]
+    # Nothing identifying: no search terms, no user-agent string, no address.
+    assert "x402+bazaar" not in caplog.text and "Macintosh" not in caplog.text

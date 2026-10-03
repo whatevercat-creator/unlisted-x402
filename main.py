@@ -182,6 +182,50 @@ def _payer_from_request(request: Request) -> Optional[str]:
         return None
 
 
+# Substrings that mark a non-human visitor (crawlers, link previews, scripts).
+_BOT_HINTS = (
+    "bot", "crawl", "spider", "preview", "facebookexternalhit", "slurp", "curl",
+    "wget", "python", "httpx", "go-http", "node", "axios", "headless", "monitor", "scan",
+)
+
+
+def _visit_kind(user_agent: Optional[str]) -> str:
+    ua = (user_agent or "").lower()
+    if not ua:
+        return "unknown"
+    return "bot" if any(hint in ua for hint in _BOT_HINTS) else "browser"
+
+
+def _referrer_site(referer: Optional[str]) -> str:
+    """Just the referring site's host name ("google.com"), never the full
+    URL, so no search terms or page paths are stored. "direct" when the
+    visitor sent no Referer header."""
+    if not referer:
+        return "direct"
+    host = (urlparse(referer).hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host or "direct"
+
+
+def _log_guide_visit(request: Request) -> None:
+    """One guide_visit line per /guide view: where the visitor came from
+    and whether it looks like a person. Stores no IP address, no cookie
+    and no user-agent string. Never raises."""
+    try:
+        logger.info(
+            json.dumps(
+                {
+                    "event": "guide_visit",
+                    "referrer": _referrer_site(request.headers.get("referer")),
+                    "kind": _visit_kind(request.headers.get("user-agent")),
+                }
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _target_domain(url: str) -> str:
     return urlparse(url).hostname or url
 
@@ -483,7 +527,8 @@ def create_app(
         return HTMLResponse(_home_page(price=price, paid_price=paid_price))
 
     @fastapi_app.get("/guide", response_class=HTMLResponse, include_in_schema=False)
-    async def guide_page() -> HTMLResponse:
+    async def guide_page(request: Request) -> HTMLResponse:
+        _log_guide_visit(request)
         return HTMLResponse(guide.guide_page(price=price, paid_price=paid_price))
 
     for _path, _file, _type in (
