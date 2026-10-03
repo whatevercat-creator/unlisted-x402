@@ -485,13 +485,97 @@ def check_route_template(
     )
 
 
+def _json_path(parent: str, key: Any) -> str:
+    if isinstance(key, int):
+        return f"{parent}[{key}]"
+    if re.fullmatch(r"[A-Za-z_$][\w$]*", key):
+        return f"{parent}.{key}"
+    return f"{parent}[{json.dumps(key)}]"
+
+
+def _external_refs(node: Any, path: str) -> list[tuple[str, str]]:
+    """(json path, value) for every `$ref`/`$id` string under `node` that
+    isn't local to the document (i.e. doesn't start with "#")."""
+    found: list[tuple[str, str]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            child = _json_path(path, key)
+            if key in ("$ref", "$id") and isinstance(value, str) and not value.startswith("#"):
+                found.append((child, value))
+            else:
+                found.extend(_external_refs(value, child))
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            found.extend(_external_refs(value, _json_path(path, i)))
+    return found
+
+
+def check_schema_external_refs(
+    challenge: dict[str, Any], accepts: list[dict[str, Any]]
+) -> CheckResult:
+    """Check 6: external `$ref`/`$id` anywhere in the Bazaar declaration
+    (`info` and `schema`, input and output). CDP's indexer rejects them with
+    "schema must not contain external $ref/$id references" (cdp-sdk #835),
+    even when /v2/x402/validate passes the route (x402 #3045)."""
+    extensions = _extensions_value(challenge, accepts)
+    bazaar = extensions.get("bazaar") if isinstance(extensions, dict) else None
+    if not isinstance(bazaar, dict):
+        return CheckResult(
+            check_id="schema_external_refs",
+            status=Status.SKIP,
+            detail="No `extensions.bazaar` declaration to scan (see bazaar_extension check)",
+        )
+
+    found: list[tuple[str, str]] = []
+    for part in ("info", "schema"):
+        found.extend(_external_refs(bazaar.get(part), f"extensions.bazaar.{part}"))
+
+    if found:
+        listed = "; ".join(f"{path} = {value!r}" for path, value in found)
+        return CheckResult(
+            check_id="schema_external_refs",
+            status=Status.FAIL,
+            detail=(
+                f"{len(found)} external $ref/$id reference(s) in the Bazaar "
+                f"declaration: {listed}"
+            ),
+            fix=(
+                "Inline the schema: replace each external `$ref` with the "
+                "definition it points to, and drop external `$id` values. Only "
+                "local references (\"#/...\") are allowed. CDP's indexer rejects "
+                "the route otherwise, even though settlement and /v2/x402/validate "
+                "succeed. Then make a new settlement through CDP."
+            ),
+            confidence=Confidence.SERVER,
+        )
+
+    return CheckResult(
+        check_id="schema_external_refs",
+        status=Status.PASS,
+        detail="No external $ref/$id references in the Bazaar declaration",
+        confidence=Confidence.SERVER,
+    )
+
+
+def _guarded(check_id: str, check, *args) -> CheckResult:
+    """Run a check that must never take the whole diagnosis down with it."""
+    try:
+        return check(*args)
+    except Exception as e:  # noqa: BLE001
+        return CheckResult(
+            check_id=check_id,
+            status=Status.SKIP,
+            detail=f"Check could not run: {type(e).__name__}: {e}",
+        )
+
+
 # --------------------------------------------------------------------------
 # Running the full dry-check rule chain
 # --------------------------------------------------------------------------
 
 
 def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
-    """Run checks 1-5 against the challenge. `resource`, `description`, and
+    """Run checks 1-6 against the challenge. `resource`, `description`, and
     `extensions` are read at the challenge level (the confirmed real
     shape), with `accepts[]` used only as a fallback for schema variance
     and to note when multiple payment options are offered."""
@@ -503,6 +587,7 @@ def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
         check_bazaar_extension(challenge, accepts),
         check_description_length(challenge, accepts),
         check_route_template(challenge, accepts),
+        _guarded("schema_external_refs", check_schema_external_refs, challenge, accepts),
     ]
 
     if len(accepts) > 1:
@@ -547,7 +632,8 @@ def summarize(checks: list[CheckResult]) -> str:
         sentence = (
             f"No issues found in the {schema_check_count} schema/config check(s) "
             "(resource, scheme match, bazaar extension, description length, "
-            "and route template when reported)."
+            "external schema refs, and route template and example-input probe "
+            "when reported)."
         )
 
         settlement = by_id.get("settlement_echo")

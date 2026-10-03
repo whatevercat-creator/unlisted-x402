@@ -7,6 +7,7 @@ import diagnosis
 import guide
 import main
 import paid_check
+import probe
 import payment
 
 
@@ -51,7 +52,7 @@ def test_guide_has_fourteen_anchored_causes():
 
 
 def test_guide_check_ids_exist_in_code():
-    source = "".join(inspect.getsource(m) for m in (diagnosis, bazaar, paid_check))
+    source = "".join(inspect.getsource(m) for m in (diagnosis, bazaar, paid_check, probe))
     for check_id in guide.REFERENCED_CHECK_IDS:
         assert f'"{check_id}"' in source, check_id
 
@@ -198,3 +199,17 @@ def test_guide_visit_logs_referrer_site_and_kind_only(caplog):
     ]
     # Nothing identifying: no search terms, no user-agent string, no address.
     assert "x402+bazaar" not in caplog.text and "Macintosh" not in caplog.text
+
+
+def test_guide_and_llms_describe_schema_refs_and_probe_checks():
+    client = _client()
+    text = client.get("/guide").text
+    refs = text[text.index('<h2 id="schema-refs">') : text.index('<h2 id="wildcard">')]
+    assert "<code>schema_external_refs</code> check covers this" in refs
+    assert "doesn't scan your schemas" not in refs
+    probe_box = text[text.index('<h2 id="probe-rejected">') : text.index('<h2 id="collapsed">')]
+    assert "<code>probe_response</code> check covers this" in probe_box
+    llms = client.get("/llms.txt").text
+    assert "schema_external_refs" in llms and "probe_response" in llms
+    description = client.get("/openapi.json").json()["paths"]["/diagnose"]["post"]["description"]
+    assert "schema_external_refs" in description and "probe_response" in description

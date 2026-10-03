@@ -30,6 +30,8 @@ REFERENCED_CHECK_IDS = (
     "scheme_mismatch",
     "resource_present",
     "route_template",
+    "schema_external_refs",
+    "probe_response",
 )
 
 _STYLE = """
@@ -211,7 +213,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <h3>Fix</h3>
 <p><b>Inline your schemas.</b> If the input schema or <code>output.schema</code> in your Bazaar declaration has a <code>$ref</code> or <code>$id</code> pointing to an external URL, inline the referenced definitions and drop the external <code>$id</code>. A Coinbase contributor confirmed this cause in {_CDP_835}, where indexing failed with &ldquo;schema must not contain external $ref/$id references&rdquo;. In x402 #3045, a <code>$ref</code> in <code>output.schema</code> broke CDP's validator, and a seller who had fixed <code>output.schema</code> was still unlisted until they did the same for the input schema. CDP's <code>/v2/x402/validate</code> passed their route both times. After the fix and a new settlement, it was indexed.</p>
 <p><b>Send <code>paymentPayload.resource</code> when you settle.</b> Coinbase's docs say the settlement that triggers indexing must set both <code>paymentPayload.extensions.bazaar</code> and <code>paymentPayload.resource</code>, and a maintainer said in x402 #3045 that settlement succeeds without them. Current SDKs fill it in. Hand-rolled settle code often doesn't. One seller found that adding it alone wasn't enough: they also had to settle with an x402 v2 payload, where <code>resource</code> is an object rather than a URL string.</p>
-<div class="card check"><b>Check it with Unlisted:</b> Unlisted doesn't scan your schemas for external references, and it can't see what your server sends CDP when it settles. A &ldquo;would be accepted&rdquo; result from the {price} Check doesn't rule this cause out. After you fix it, the {paid_price} Check + real payment (<code>?mode=paid</code>) makes the fresh settlement you need.</div>
+{_check_box("schema_external_refs", f"the Check scans your Bazaar declaration (<code>info</code> and <code>schema</code>, input and output) for <code>$ref</code> and <code>$id</code> values that aren't local <code>#/...</code> references, and lists the exact JSON path of each one it finds. It can't see what your server sends CDP when it settles, so it doesn't cover <code>paymentPayload.resource</code>. After you fix either one, the {paid_price} Check + real payment (<code>?mode=paid</code>) makes the fresh settlement you need.")}
 
 <h2 id="wildcard">10. The route uses a bare wildcard</h2>
 <h3>Symptom</h3>
@@ -232,7 +234,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>A payment settled through CDP and the facilitator said <code>processing</code>, but the route never shows up. After a settlement, the Bazaar probes your route with the example input from <code>extensions.bazaar.info.input</code>, or an empty body if you didn't declare one. If your input validation runs before the x402 middleware, the probe gets a 400, 409 or 422 instead of a 402, and indexing stops there. A Coinbase contributor traced a stuck route to exactly this in {_CDP_830}: the probe got a 409.</p>
 <h3>Fix</h3>
 <p>Make sure the example input in your declaration passes your route's own validation and comes back as a 402 with the payment requirements in the <code>PAYMENT-REQUIRED</code> header. Or let the x402 middleware answer before validation runs. Then make a new settlement.</p>
-<div class="card check"><b>Check it with Unlisted:</b> send your declaration's example input as <code>"body"</code> (with <code>"method": "POST"</code> for a POST route). If your route answers with anything but a 402, the {price} Check's report opens with &ldquo;Expected HTTP 402, got&rdquo; and the status it got. Unlisted probes with the body you send, not the example in your declaration, so use the same one.</div>
+{_check_box("probe_response", "the Check rebuilds CDP's probe from your declaration (its method, path and query params, and example body), sends it to your route unpaid, and fails if anything but a 402 comes back, naming the status it got. It skips when the declaration has no example input to send.")}
 
 <h2 id="collapsed">13. Several URLs collapse into one entry</h2>
 <h3>Symptom</h3>
@@ -312,6 +314,8 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - bazaar.curated: true if CDP's discovery listing marks the route as Coinbase-curated, false if not, or null if unknown (lookup failed or the route couldn't be matched).
 - checks: a list of results, each with check_id, status ("pass", "fail", "warn" or "skip"), detail and, for failures, a fix.
 - verdict: a one-line summary.
+- schema_external_refs: fails with the JSON path of every external $ref/$id in the target's Bazaar declaration (info and schema, input and output). CDP's indexer rejects them. Inline the schema to fix it.
+- probe_response: sends the declaration's example input (method, path or query params, example body) to the target unpaid, as CDP's indexer does after a settlement, and fails if the answer isn't a 402, which means validation runs before the paywall. Skipped when there's no usable example.
 
 ## Limits
 

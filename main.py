@@ -77,6 +77,7 @@ import bazaar
 import guide
 import outbound_payment
 import payment
+import probe
 from dry_check import run_dry_check
 from limits import EconomicCeiling, RateLimitExceeded, SlidingWindowRateLimiter, log_submission, log_usage
 from paid_check import run_paid_check
@@ -233,12 +234,7 @@ def _target_domain(url: str) -> str:
 # RFC 2606 reserved example domains. Unlisted's marketplace listing shows a
 # sample URL on one of these, and callers paste it verbatim -- reject it
 # up front with a pointer to what's wrong instead of fetching it.
-_EXAMPLE_DOMAINS = ("example.com", "example.org", "example.net")
-
-
-def _is_example_domain(url: str) -> bool:
-    host = (urlparse(url).hostname or "").rstrip(".").lower()
-    return any(host == d or host.endswith("." + d) for d in _EXAMPLE_DOMAINS)
+_is_example_domain = probe.is_example_domain
 
 
 def _caller_key(request: Request) -> str:
@@ -383,7 +379,10 @@ def create_app(
             f"Paid per call over x402 in USDC on Base mainnet: {price} per check, "
             f"or {paid_price} with ?mode=paid, which also makes one real test payment "
             "to the target. An unpaid request returns HTTP 402 with the payment "
-            "requirements. You are only charged when the check completes."
+            "requirements. You are only charged when the check completes. Among the "
+            "checks: schema_external_refs lists every external $ref/$id in the "
+            "target's Bazaar declaration, and probe_response sends the declaration's "
+            "example input to the target unpaid, as CDP's indexer does, and expects a 402."
         ),
         openapi_extra=diagnose_openapi,
         responses={

@@ -68,6 +68,7 @@ from outbound_payment import (
     usd_price_of_accept,
 )
 from dry_check import _body_kwargs
+from probe import check_probe_response
 from safe_fetch import FetchError, SSRFBlocked, safe_fetch
 
 
@@ -126,6 +127,11 @@ async def run_paid_check(
         )
 
     checks = run_checks(challenge, final_url=response.url)
+
+    async def _probe_fetch(probe_url: str, **kwargs: Any):
+        return await safe_fetch(probe_url, transport=transport, **kwargs)
+
+    checks.append(await check_probe_response(challenge, response.url, _probe_fetch, method))
     accepts = extract_accepts(challenge)
 
     settlement_check = await _run_settlement_echo_check(

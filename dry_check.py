@@ -28,6 +28,7 @@ from diagnosis import (
     run_checks,
     summarize,
 )
+from probe import check_probe_response
 from safe_fetch import FetchError, SSRFBlocked, safe_fetch
 
 
@@ -82,6 +83,8 @@ async def run_dry_check(
         )
 
     checks = run_checks(challenge, final_url=response.url)
+    # Looked up at call time so tests that monkeypatch safe_fetch cover it too.
+    checks.append(await check_probe_response(challenge, response.url, safe_fetch, method))
 
     bazaar_check = await check_bazaar_index_status(response.url, bazaar_client, method)
     if bazaar_check is not None:
