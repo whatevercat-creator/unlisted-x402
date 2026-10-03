@@ -79,12 +79,17 @@ report even if CDP's own API happens to be unreachable at that moment.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 from types import SimpleNamespace
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
-from diagnosis import CheckResult, Confidence, Status
+from diagnosis import CheckResult, Confidence, Status, _resource_url, _resource_value, extract_accepts
+
+logger = logging.getLogger("x402_doctor")
 
 CHECK_ID = "bazaar_index_status"
 
@@ -303,6 +308,103 @@ def _result_from_validate_response(response: Any) -> CheckResult:
     )
 
 
+# --- Curation ------------------------------------------------------------
+# validate_x402_resource has no curation field, but CDP's discovery listing
+# does: each resource carries `curated: true` when Coinbase has hand-picked
+# it, and omits the field otherwise (cdp-sdk X402DiscoveryResource.curated).
+# So after the index check, look the target up by its payTo and read that
+# flag. Best effort only: any failure means "unknown", never a failed report.
+
+CURATED_LOOKUP_TIMEOUT_SECONDS = 8.0
+_MERCHANT_PAGE_SIZE = 100
+_MERCHANT_MAX_PAGES = 10
+
+
+async def lookup_curated(
+    challenge: dict[str, Any],
+    final_url: str,
+    bazaar_client: Optional[Any],
+    index_check: Optional[CheckResult],
+) -> Optional[bool]:
+    """True/False when CDP's discovery listing answers it, None (unknown)
+    when the lookup isn't configured, can't be matched, or fails."""
+    if bazaar_client is None:
+        return None
+    try:
+        return await asyncio.wait_for(
+            _lookup_curated(challenge, final_url, bazaar_client, index_check),
+            timeout=CURATED_LOOKUP_TIMEOUT_SECONDS,
+        )
+    except Exception as e:  # noqa: BLE001 -- never fail a diagnosis over this
+        logger.info("curated lookup failed: %s: %s", type(e).__name__, e)
+        return None
+
+
+async def _lookup_curated(
+    challenge: dict[str, Any],
+    final_url: str,
+    bazaar_client: Any,
+    index_check: Optional[CheckResult],
+) -> Optional[bool]:
+    accepts = extract_accepts(challenge)
+    pay_to = next(
+        (a["payTo"] for a in accepts if isinstance(a.get("payTo"), str) and a["payTo"]), None
+    )
+    if pay_to is None:
+        return None
+    target = _resource_url(_resource_value(challenge, accepts)) or final_url
+
+    resources = []
+    for page in range(_MERCHANT_MAX_PAGES):
+        raw = await bazaar_client.list_x402_discovery_merchant_without_preload_content(
+            pay_to=pay_to, limit=_MERCHANT_PAGE_SIZE, offset=page * _MERCHANT_PAGE_SIZE
+        )
+        status = getattr(raw, "status", 200)
+        if status >= 400:
+            raise _CdpHttpError(status, str(getattr(raw, "reason", "") or ""))
+        data = json.loads(await raw.read())
+        batch = data.get("resources") or []
+        resources.extend(r for r in batch if isinstance(r, dict))
+        total = (data.get("pagination") or {}).get("total")
+        if len(batch) < _MERCHANT_PAGE_SIZE or (isinstance(total, int) and len(resources) >= total):
+            break
+
+    exact = [r for r in resources if _same_url(r.get("resource"), target)]
+    matched = exact or [r for r in resources if _matches_template(r.get("resource"), target)]
+    if matched:
+        # The field is omitted for resources that aren't curated.
+        return any(r.get("curated") is True for r in matched)
+    if index_check is not None and index_check.status in (Status.FAIL, Status.WARN):
+        # CDP's validate says it isn't indexed, and only indexed routes can be curated.
+        return False
+    return None
+
+
+def _url_parts(url: Any) -> Optional[tuple[str, str, list[str]]]:
+    if not isinstance(url, str):
+        return None
+    parts = urlsplit(url)
+    segments = [seg for seg in parts.path.split("/") if seg]
+    return parts.scheme.lower(), parts.netloc.lower(), segments
+
+
+def _same_url(listed: Any, target: str) -> bool:
+    a, b = _url_parts(listed), _url_parts(target)
+    return a is not None and a == b
+
+
+def _matches_template(listed: Any, target: str) -> bool:
+    """CDP lists routes as templates, e.g. /sentiment/:symbol for a target
+    of /sentiment/BTC: a `:name` (or `{name}`) segment matches any value."""
+    a, b = _url_parts(listed), _url_parts(target)
+    if a is None or b is None or a[:2] != b[:2] or len(a[2]) != len(b[2]):
+        return False
+    return all(
+        seg == want or seg.startswith(":") or (seg.startswith("{") and seg.endswith("}"))
+        for seg, want in zip(a[2], b[2])
+    )
+
+
 # Top-level answer to "is this endpoint in the Bazaar right now?", derived
 # from the bazaar_index_status check so callers don't have to dig through
 # checks[] for the one line the product is about.
@@ -314,19 +416,29 @@ _INDEX_STATUS_BY_CHECK = {
 }
 
 
-def summarize_index_status(checks: list[CheckResult]) -> dict[str, Any]:
-    """Return {"indexed": bool|None, "status": str, "detail": str} for the
-    report's top-level `bazaar` field. indexed is None when the live lookup
-    didn't run (feature off, non-https target, or CDP unreachable)."""
+def summarize_index_status(
+    checks: list[CheckResult], curated: Optional[bool] = None
+) -> dict[str, Any]:
+    """Return {"indexed": bool|None, "status": str, "curated": bool|None,
+    "detail": str} for the report's top-level `bazaar` field. indexed is
+    None when the live lookup didn't run (feature off, non-https target, or
+    CDP unreachable); curated is None when lookup_curated couldn't tell."""
     for check in checks:
         if check.check_id == CHECK_ID:
             status, indexed = _INDEX_STATUS_BY_CHECK.get(check.status, ("unknown", None))
-            return {"indexed": indexed, "status": status, "detail": check.detail}
+            return {"indexed": indexed, "status": status, "curated": curated, "detail": check.detail}
     return {
         "indexed": None,
         "status": "unknown",
+        "curated": curated,
         "detail": "Live Bazaar index lookup is not enabled on this deployment.",
     }
 
 
-__all__ = ["build_bazaar_client", "check_bazaar_index_status", "summarize_index_status", "CHECK_ID"]
+__all__ = [
+    "build_bazaar_client",
+    "check_bazaar_index_status",
+    "lookup_curated",
+    "summarize_index_status",
+    "CHECK_ID",
+]

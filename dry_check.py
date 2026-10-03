@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from bazaar import check_bazaar_index_status
+from bazaar import check_bazaar_index_status, lookup_curated
 from diagnosis import (
     ChallengeParseError,
     CheckResult,
@@ -86,6 +86,7 @@ async def run_dry_check(
     bazaar_check = await check_bazaar_index_status(response.url, bazaar_client, method)
     if bazaar_check is not None:
         checks.append(bazaar_check)
+    curated = await lookup_curated(challenge, response.url, bazaar_client, bazaar_check)
 
     return DiagnosisReport(
         url=url,
@@ -93,6 +94,7 @@ async def run_dry_check(
         http_status=response.status_code,
         checks=checks,
         verdict=summarize(checks),
+        curated=curated,
     )
 
 

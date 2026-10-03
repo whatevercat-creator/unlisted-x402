@@ -112,6 +112,9 @@ class DiagnosisReport:
     checks: list[CheckResult] = field(default_factory=list)
     verdict: str = ""
     parse_error: Optional[str] = None
+    # CDP discovery's curated flag (bazaar.lookup_curated); None = unknown.
+    # main.py moves it into the top-level `bazaar` summary.
+    curated: Optional[bool] = None
 
     @property
     def failures(self) -> list[CheckResult]:
@@ -398,7 +401,7 @@ def check_bazaar_extension(
 def check_description_length(
     challenge: dict[str, Any], accepts: list[dict[str, Any]], max_length: int = 500
 ) -> CheckResult:
-    """Check 4: description over ~500 chars breaks the challenge silently."""
+    """Check 4: CDP's facilitator rejects verify/settle when the description is over 500 characters."""
     resource = _resource_value(challenge, accepts)
     description = _description_value(challenge, resource, accepts)
     if not isinstance(description, str):
@@ -413,7 +416,7 @@ def check_description_length(
         return CheckResult(
             check_id="description_length",
             status=Status.FAIL,
-            detail=f"`description` is {length} characters, over the ~{max_length} char limit",
+            detail=f"`description` is {length} characters, over the {max_length} character limit",
             fix=(
                 f"Trim `description` to under {max_length} characters. This failure "
                 "mode is silent -- the challenge doesn't error, it just doesn't get "
@@ -425,7 +428,7 @@ def check_description_length(
     return CheckResult(
         check_id="description_length",
         status=Status.PASS,
-        detail=f"`description` is {length} characters (limit ~{max_length})",
+        detail=f"`description` is {length} characters (limit {max_length})",
         confidence=Confidence.SERVER,
     )
 

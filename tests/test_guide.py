@@ -172,5 +172,6 @@ def test_guide_curation_section_is_honest_about_scope():
     text = _client().get("/guide").text
     section = text[text.index('id="not-curated"'):text.index("<h2>Check all of it in one call</h2>")]
     assert "https://github.com/coinbase/cdp-sdk/issues/838" in section
-    assert "It doesn't check curation or enrichment." in section
+    assert "<code>bazaar.curated</code>" in section
+    assert "doesn't read agentic.market's <code>enriched</code> field" in section
     assert 'href="#not-curated"' in text

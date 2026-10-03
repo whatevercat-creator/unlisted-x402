@@ -34,8 +34,10 @@ def test_summarize_index_status_maps_each_status(status, expected_status, expect
     assert summary == {
         "indexed": expected_indexed,
         "status": expected_status,
+        "curated": None,
         "detail": f"detail-{status.value}",
     }
+    assert list(summary) == ["indexed", "status", "curated", "detail"]
 
 
 def test_summarize_index_status_when_lookup_not_run():

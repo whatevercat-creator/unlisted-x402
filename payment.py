@@ -141,7 +141,12 @@ BAZAAR_EXTENSION = declare_discovery_extension(
     body_type="json",
     output=OutputConfig(
         example={
-            "bazaar": {"indexed": False, "status": "not_indexed_would_be_accepted", "detail": "..."},
+            "bazaar": {
+                "indexed": False,
+                "status": "not_indexed_would_be_accepted",
+                "curated": False,
+                "detail": "...",
+            },
             "url": "https://api.example.com/paid-route",
             "mode": "dry",
             "checks": [{"check_id": "bazaar_extension", "status": "pass", "detail": "..."}],

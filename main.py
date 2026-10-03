@@ -449,7 +449,9 @@ def create_app(
         # Top-level answer first: is it in the Bazaar right now? Everything
         # else (verdict, per-check detail) follows unchanged.
         body = asdict(report)
-        bazaar_summary = bazaar.summarize_index_status(report.checks)
+        # `curated` belongs in the bazaar summary, next to index status.
+        curated = body.pop("curated", None)
+        bazaar_summary = bazaar.summarize_index_status(report.checks, curated)
         log_usage(
             url=url,
             method=payload.method,

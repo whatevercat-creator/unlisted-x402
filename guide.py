@@ -264,7 +264,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <h3>What it means</h3>
 <p>A Coinbase contributor explained in #838 that <code>enriched</code> is only turned on for the hand-picked editorial set of curated endpoints. Meeting the published criteria makes an endpoint eligible to be selected, not entitled to it: selection is at Coinbase's discretion, based on service quality, category coverage and ecosystem fit.</p>
 <p><a href="{OFFICIAL_CHECKLIST_URL}#requirements-for-curation">Coinbase's curation requirements</a> are: live x402 payments on mainnet, at least 99% availability over 30 days (above 99.5% gets priority), passing the platform health probe, agent-ready metadata (a complete input schema, a description that tells an agent when to use the endpoint, per-call pricing, supported networks and documented error responses), and passing validation. Curated endpoints that fail consecutive health probes are down-ranked, then dropped from the featured tier, and restored once they recover. The docs don't describe an application process.</p>
-<div class="card check"><b>Check it with Unlisted:</b> Unlisted reports whether your route is indexed. It doesn't check curation or enrichment. CDP's discovery API (the payTo lookup above) marks curated resources with <code>curated: true</code> and leaves the field out otherwise.</div>
+<div class="card check"><b>Check it with Unlisted:</b> the {price} Check's report includes <code>bazaar.curated</code>, read from CDP's discovery API (the payTo lookup above), which marks curated resources with <code>curated: true</code> and leaves the field out otherwise. It's <code>true</code> or <code>false</code>, or <code>null</code> when Unlisted couldn't tell: the lookup failed, or your route couldn't be matched in the listing. Unlisted doesn't read agentic.market's <code>enriched</code> field, and it can't get a route curated.</div>
 
 <h2>Check all of it in one call</h2>
 <p>Unlisted runs every check above against your endpoint and asks CDP for its live index status. No signup and no API key: you pay per call in USDC on Base through x402, and you're only charged if the check completes.</p>
@@ -277,7 +277,7 @@ Content-Type: application/json
 <tr><td>Check</td><td>{price}</td><td>Your 402 challenge, the Bazaar declaration, and CDP's live index status</td></tr>
 <tr><td>Check + real payment (<code>?mode=paid</code>)</td><td>{paid_price}</td><td>All of the above, plus one real test payment to your route. Once per domain per 24 hours.</td></tr>
 </table></div>
-<p>Replace the sample URL with your own endpoint. The report opens with <code>bazaar.indexed</code> (<code>true</code>, <code>false</code>, or <code>null</code> if CDP couldn't be reached), then one result per check with a fix for each failure.</p>
+<p>Replace the sample URL with your own endpoint. The report opens with <code>bazaar.indexed</code> (<code>true</code>, <code>false</code>, or <code>null</code> if CDP couldn't be reached) and <code>bazaar.curated</code> (<code>true</code>, <code>false</code>, or <code>null</code> if unknown), then one result per check with a fix for each failure.</p>
 
 <footer><a href="/">unlisted.sh</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a><br>
 Unlisted isn't affiliated with Coinbase. &ldquo;CDP&rdquo; and &ldquo;Bazaar&rdquo; refer to Coinbase Developer Platform's x402 facilitator and discovery catalog.</footer>
@@ -309,6 +309,7 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 
 - bazaar.indexed: true, false, or null if CDP could not be reached.
 - bazaar.status: "indexed", "not_indexed_would_be_accepted", "not_indexed" or "unknown".
+- bazaar.curated: true if CDP's discovery listing marks the route as Coinbase-curated, false if not, or null if unknown (lookup failed or the route couldn't be matched).
 - checks: a list of results, each with check_id, status ("pass", "fail", "warn" or "skip"), detail and, for failures, a fix.
 - verdict: a one-line summary.
 

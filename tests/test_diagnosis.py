@@ -303,3 +303,12 @@ def test_run_checks_surfaces_failures_in_summary():
     assert "issue(s) found" in summary
     assert "bazaar_extension" in summary
     assert "description_length" in summary
+
+
+def test_description_length_message_states_exact_limit():
+    challenge = {"x402Version": 2, "resource": {"url": "https://a.test/x", "description": "d" * 501},
+                 "accepts": [{"scheme": "exact", "network": "eip155:8453", "amount": "1", "payTo": "0x1"}]}
+    result = check_description_length(challenge, extract_accepts(challenge))
+    assert result.status == Status.FAIL
+    assert result.detail == "`description` is 501 characters, over the 500 character limit"
+    assert "~" not in result.detail
