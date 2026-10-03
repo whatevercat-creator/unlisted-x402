@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from html import escape
 
-GUIDE_UPDATED = "October 1, 2026"
-GUIDE_UPDATED_ISO = "2026-10-01"
+GUIDE_UPDATED = "October 3, 2026"
+GUIDE_UPDATED_ISO = "2026-10-03"
+# Coinbase's own discovery checklist, linked near the top as the official source.
+OFFICIAL_CHECKLIST_URL = "https://docs.cdp.coinbase.com/x402/seller/get-discovered"
 CANONICAL_URL = "https://unlisted.sh/guide"
 
 # check_ids this page refers to; tests verify each one is real.
@@ -59,6 +61,11 @@ footer { margin-top:56px; color:var(--muted); font-size:0.9rem; border-top:1px s
 """
 
 
+# Issue links used more than once in the page.
+_CDP_830 = '<a href="https://github.com/coinbase/cdp-sdk/issues/830">cdp-sdk #830</a>'
+_CDP_835 = '<a href="https://github.com/coinbase/cdp-sdk/issues/835">cdp-sdk #835</a>'
+
+
 def _check_box(check_id: str, text: str) -> str:
     return (
         f'<div class="card check"><b>Check it with Unlisted:</b> {text} '
@@ -91,7 +98,9 @@ def guide_page(*, price: str, paid_price: str) -> str:
 
 <p class="lede">Your x402 endpoint returns a 402, takes payment, and works. But it isn't in the CDP Bazaar, so agents searching the catalog never find it. Below is every cause we know of, with the symptom and the fix for each. You can work through it by hand for free.</p>
 
-<div class="card"><b>How a route gets listed.</b> The Bazaar doesn't crawl the web for x402 endpoints. A route gets listed when a payment to it <em>settles through CDP's facilitator</em> and the 402 challenge carries a valid <code>extensions.bazaar</code> declaration. After that, CDP re-crawls it from time to time. So you need three things: a well-formed challenge, CDP as the facilitator, and at least one settled payment.</div>
+<div class="card"><b>Official source.</b> Coinbase's <a href="{OFFICIAL_CHECKLIST_URL}">Get discovered (Bazaar)</a> guide has the checklist and troubleshooting notes this page builds on. The causes below add what sellers have run into, each linked to where it was reported or confirmed.</div>
+
+<div class="card"><b>How a route gets listed.</b> The Bazaar doesn't crawl the web for x402 endpoints. A route gets listed when a payment to it <em>settles through CDP's facilitator</em>, its 402 challenge carries a valid <code>extensions.bazaar</code> declaration, and the settle request carries both <code>paymentPayload.extensions.bazaar</code> and <code>paymentPayload.resource</code>. CDP then probes the route with the example input from your declaration and expects a 402. So you need a well-formed challenge on a public https URL, CDP as the facilitator, and at least one settled payment that carries the metadata.</div>
 
 <div class="card toc"><b>Causes</b>
 <ol>
@@ -106,8 +115,11 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#schema-refs">External $ref/$id in a schema, or paymentPayload.resource not sent</a></li>
 <li><a href="#wildcard">The route uses a bare wildcard</a></li>
 <li><a href="#stale">You changed price or metadata and the listing didn't update</a></li>
+<li><a href="#probe-rejected">CDP's probe gets an error instead of a 402</a></li>
+<li><a href="#collapsed">Several URLs collapse into one entry</a></li>
+<li><a href="#dropped">The route dropped out after 30 days without a settlement</a></li>
 </ol>
-<p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>.</p></div>
+<p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>. Listed but not featured? See <a href="#not-curated">indexed, but not curated (<code>enriched: false</code>)</a>.</p></div>
 
 <h2>x402 endpoint not showing in Bazaar: quick triage</h2>
 <div class="scroll"><table>
@@ -116,7 +128,11 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <tr><td>Real payments have landed, still not listed</td><td><a href="#other-facilitator">2</a>, then <a href="#extension-missing">3</a> and <a href="#description">4</a></td></tr>
 <tr><td>Your app runs behind Render, Railway, Fly, Heroku, nginx or a load balancer</td><td><a href="#http-resource">5</a></td></tr>
 <tr><td>Some x402 clients say there are no payment options</td><td><a href="#empty-body">7</a></td></tr>
-<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#schema-refs">9</a>, then the <a href="#stuck-processing">known open problem</a></td></tr>
+<tr><td>CDP's facilitator answered <code>rejected</code></td><td><a href="#extension-missing">3</a> (read <code>rejectedReason</code>)</td></tr>
+<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#probe-rejected">12</a> and <a href="#schema-refs">9</a>, then <a href="#stuck-processing">the open reports</a></td></tr>
+<tr><td>Was listed, now gone</td><td><a href="#dropped">14</a></td></tr>
+<tr><td>Several of your URLs show up as one entry</td><td><a href="#collapsed">13</a></td></tr>
+<tr><td>Listed, but agentic.market shows <code>enriched: false</code></td><td><a href="#not-curated">Not curated</a></td></tr>
 <tr><td>Listed, but with the wrong method or no input schema</td><td><a href="#post-as-get">8</a></td></tr>
 <tr><td>Listed, but showing an old price or description</td><td><a href="#stale">11</a></td></tr>
 </table></div>
@@ -125,19 +141,20 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <p>CDP's discovery API is public. Open this in your browser with your receiving wallet address:</p>
 <pre><code>https://api.cdp.coinbase.com/platform/v2/x402/discovery/merchant?payTo=0xYOUR_PAY_TO_ADDRESS</code></pre>
 <p>If your route shows up there, it's listed. If the list is empty or your route is missing, read on.</p>
+<p>Your own server can also read CDP's answer. On verify and settle, CDP's facilitator returns an <code>EXTENSION-RESPONSES</code> header: base64 JSON whose <code>bazaar.status</code> is <code>success</code> (cataloged), <code>processing</code> (accepted, being cataloged) or <code>rejected</code> (with a <code>rejectedReason</code>). No <code>bazaar</code> key means discovery wasn't submitted at all. <code>processing</code> doesn't confirm that indexing will succeed (<a href="{OFFICIAL_CHECKLIST_URL}#troubleshooting-discovery">Coinbase's troubleshooting notes</a>).</p>
 
 <h2 id="no-payment">1. No payment has settled through CDP yet</h2>
 <h3>Symptom</h3>
 <p>Your challenge looks right, but the route has never been paid. This is the most common cause for a brand-new endpoint.</p>
 <h3>Fix</h3>
-<p>Make one real, paid call to the route that settles through CDP's facilitator. A cent is enough. Then give the Bazaar time to crawl it.</p>
+<p>Make one real, paid call to the route that settles through CDP's facilitator. A cent is enough. Then give the Bazaar time to crawl it. It doesn't have to be a mainnet payment: a Coinbase contributor confirmed in {_CDP_835} that a testnet settlement through CDP works too, because the Bazaar indexes your live metadata, as long as <code>extensions.bazaar.info.input</code> and <code>paymentPayload.resource</code> are set.</p>
 {_check_box("bazaar_index_status", f"the {price} Check asks CDP whether your route is indexed and, if it isn't, whether CDP's own simulation would accept it. &ldquo;Would be accepted&rdquo; means you're only missing the first payment. The {paid_price} Check + real payment (<code>?mode=paid</code>) makes that payment for you, on Base mainnet in USDC, for routes priced up to $0.05. Its result is in <code>settlement_echo</code>.")}
 
 <h2 id="other-facilitator">2. Payments settle through a different facilitator</h2>
 <h3>Symptom</h3>
 <p>You've had real, settled payments, but the route still isn't listed.</p>
 <h3>Fix</h3>
-<p>The CDP Bazaar only learns about routes from settlements that go through CDP's facilitator. If your server is set up with another facilitator, CDP never sees those payments. Point the route at CDP's facilitator (it needs a CDP API key), then make one more paid call.</p>
+<p>The CDP Bazaar only learns about routes from settlements that go through CDP's facilitator. A Coinbase contributor confirmed this in <a href="https://github.com/coinbase/cdp-sdk/issues/827">cdp-sdk #827</a>: &ldquo;CDP Bazaar only surfaces resources that settle through the CDP Facilitator.&rdquo; If your server is set up with another facilitator, CDP never sees those payments. That includes the x402.org facilitator, which keeps its own separate catalog, not the CDP Bazaar. Point the route at CDP's facilitator (it needs a CDP API key), then make one more paid call.</p>
 <div class="card check"><b>Check it with Unlisted:</b> Unlisted can't see which facilitator settled your past payments. If the report says &ldquo;would be accepted&rdquo; and you know payments have landed, this is the likely cause.</div>
 
 <h2 id="extension-missing">3. <code>extensions.bazaar</code> is missing or malformed</h2>
@@ -145,14 +162,15 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <p>Payments settle, but there's nothing for the Bazaar to index. Decode your 402 challenge, and either <code>extensions.bazaar</code> isn't there or it's incomplete.</p>
 <h3>Fix</h3>
 <p>Declare discovery metadata on the route. In the Python SDK that's <code>declare_discovery_extension(...)</code> passed as the route's <code>extensions</code>, plus registering <code>bazaar_resource_server_extension</code> on the resource server. At minimum, <code>extensions.bazaar.info.input.type</code> must be <code>"http"</code> or <code>"mcp"</code>. If you include <code>info.output</code>, it needs a <code>type</code> too.</p>
-<p>Also check the paying side. A client that drops the extension when it sends the payment leaves CDP with nothing to index (see <a href="https://github.com/x402-foundation/x402/issues/3557">x402 #3557</a>).</p>
-{_check_box("bazaar_extension", "the Check decodes your challenge and validates the declaration.")}
+<p>Make the example match the schema. Coinbase's docs say rejections are usually strict JSON Schema validation: your declared <code>input</code> must validate against <code>schema.properties.input</code>.</p>
+<p>Also check the paying side. The settle request has to carry <code>paymentPayload.extensions.bazaar</code>, so a client that drops the extension when it sends the payment leaves CDP with nothing to index (see <a href="https://github.com/x402-foundation/x402/issues/3557">x402 #3557</a>).</p>
+{_check_box("bazaar_extension", "the Check decodes your challenge and validates the declaration's structure. It doesn't validate your example input against <code>schema.properties.input</code>, so if CDP's facilitator answers <code>rejected</code>, its <code>rejectedReason</code> is the place to look.")}
 
 <h2 id="description">4. The description is too long</h2>
 <h3>Symptom</h3>
-<p>Everything else is right, payments may even fail, and nothing tells you why. A long route description can break things without any error (see <a href="https://github.com/x402-foundation/x402/issues/2993">x402 #2993</a>).</p>
+<p>Everything else is right, but payments fail. Coinbase's docs say CDP's facilitator rejects verify and settle requests whose description is over 500 characters, and sellers have reported the failure being hard to trace (see <a href="https://github.com/x402-foundation/x402/issues/2993">x402 #2993</a>).</p>
 <h3>Fix</h3>
-<p>Keep the route's <code>description</code> under about 500 characters. One or two sentences is plenty: what it returns and what it costs.</p>
+<p>Keep the route's <code>description</code> to 500 characters or fewer. One or two sentences is plenty: what the endpoint does and when an agent should call it.</p>
 {_check_box("description_length", "the Check measures your description against the limit.")}
 
 <h2 id="http-resource">5. <code>resource.url</code> says <code>http://</code> behind a proxy</h2>
@@ -191,32 +209,62 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <h3>Symptom</h3>
 <p>Payments settle through CDP and CDP's validation says the route would be accepted, but it never appears in the catalog. Sellers in <a href="https://github.com/x402-foundation/x402/issues/3045">x402 #3045</a> traced this to two things on their side.</p>
 <h3>Fix</h3>
-<p><b>Inline your schemas.</b> If the input schema or <code>output.schema</code> in your Bazaar declaration has a <code>$ref</code> or <code>$id</code> pointing to an external URL, inline the referenced definitions and drop the external <code>$id</code>. In that thread, a <code>$ref</code> in <code>output.schema</code> broke CDP's validator, and a seller who had fixed <code>output.schema</code> was still unlisted until they did the same for the input schema. CDP's <code>/v2/x402/validate</code> passed their route both times. After the fix and a new settlement, it was indexed.</p>
-<p><b>Send <code>paymentPayload.resource</code> when you settle.</b> A maintainer said in that thread that the settle request has to carry it for the discovery job to be submitted, and that settlement succeeds without it. Current SDKs fill it in. Hand-rolled settle code often doesn't. One seller found that adding it alone wasn't enough: they also had to settle with an x402 v2 payload, where <code>resource</code> is an object rather than a URL string.</p>
+<p><b>Inline your schemas.</b> If the input schema or <code>output.schema</code> in your Bazaar declaration has a <code>$ref</code> or <code>$id</code> pointing to an external URL, inline the referenced definitions and drop the external <code>$id</code>. A Coinbase contributor confirmed this cause in {_CDP_835}, where indexing failed with &ldquo;schema must not contain external $ref/$id references&rdquo;. In x402 #3045, a <code>$ref</code> in <code>output.schema</code> broke CDP's validator, and a seller who had fixed <code>output.schema</code> was still unlisted until they did the same for the input schema. CDP's <code>/v2/x402/validate</code> passed their route both times. After the fix and a new settlement, it was indexed.</p>
+<p><b>Send <code>paymentPayload.resource</code> when you settle.</b> Coinbase's docs say the settlement that triggers indexing must set both <code>paymentPayload.extensions.bazaar</code> and <code>paymentPayload.resource</code>, and a maintainer said in x402 #3045 that settlement succeeds without them. Current SDKs fill it in. Hand-rolled settle code often doesn't. One seller found that adding it alone wasn't enough: they also had to settle with an x402 v2 payload, where <code>resource</code> is an object rather than a URL string.</p>
 <div class="card check"><b>Check it with Unlisted:</b> Unlisted doesn't scan your schemas for external references, and it can't see what your server sends CDP when it settles. A &ldquo;would be accepted&rdquo; result from the {price} Check doesn't rule this cause out. After you fix it, the {paid_price} Check + real payment (<code>?mode=paid</code>) makes the fresh settlement you need.</div>
 
 <h2 id="wildcard">10. The route uses a bare wildcard</h2>
 <h3>Symptom</h3>
 <p>The route is declared as <code>/prices/*</code>, so the listing can't tell agents what goes in the path.</p>
 <h3>Fix</h3>
-<p>Use a named parameter in the paywall's route pattern, such as <code>GET /prices/:symbol</code>, so the discovery metadata names the path parameter.</p>
+<p>Use a named parameter in the paywall's route pattern, such as <code>GET /prices/:symbol</code>, so the discovery metadata names the path parameter. With the CDP SDK's TypeScript <code>createX402Server</code>, the route key also needs a specific HTTP method: Coinbase's docs say a wildcard method doesn't give the SDK enough to generate discovery metadata.</p>
 {_check_box("route_template", "when your challenge includes <code>routeTemplate</code>, the Check flags a bare <code>*</code> segment.")}
 
 <h2 id="stale">11. You changed price or metadata and the listing didn't update</h2>
 <h3>Symptom</h3>
 <p>The route is listed, but with an old price, description or schema (see <a href="https://github.com/coinbase/cdp-sdk/issues/813">cdp-sdk #813</a>).</p>
 <h3>Fix</h3>
-<p>The Bazaar refreshes a route when it re-crawls it, so a change can take a while to show up. Make a new paid call after the change, then check the crawl time again before assuming it's stuck.</p>
+<p>The Bazaar refreshes a route when it re-crawls it, so a change can take a while to show up. Make a new paid call after the change: a Coinbase contributor said in {_CDP_835} that indexing can't be retriggered on an existing settlement. Then check the crawl time again before assuming it's stuck. Ranking is separate: Coinbase's docs say it's recomputed every six hours.</p>
 <div class="card check"><b>Check it with Unlisted:</b> when your route is indexed, the <code>bazaar_index_status</code> result includes when CDP last crawled it, plus 30-day calls and unique payers.</div>
+
+<h2 id="probe-rejected">12. CDP's probe gets an error instead of a 402</h2>
+<h3>Symptom</h3>
+<p>A payment settled through CDP and the facilitator said <code>processing</code>, but the route never shows up. After a settlement, the Bazaar probes your route with the example input from <code>extensions.bazaar.info.input</code>, or an empty body if you didn't declare one. If your input validation runs before the x402 middleware, the probe gets a 400, 409 or 422 instead of a 402, and indexing stops there. A Coinbase contributor traced a stuck route to exactly this in {_CDP_830}: the probe got a 409.</p>
+<h3>Fix</h3>
+<p>Make sure the example input in your declaration passes your route's own validation and comes back as a 402 with the payment requirements in the <code>PAYMENT-REQUIRED</code> header. Or let the x402 middleware answer before validation runs. Then make a new settlement.</p>
+<div class="card check"><b>Check it with Unlisted:</b> send your declaration's example input as <code>"body"</code> (with <code>"method": "POST"</code> for a POST route). If your route answers with anything but a 402, the {price} Check's report opens with &ldquo;Expected HTTP 402, got&rdquo; and the status it got. Unlisted probes with the body you send, not the example in your declaration, so use the same one.</div>
+
+<h2 id="collapsed">13. Several URLs collapse into one entry</h2>
+<h3>Symptom</h3>
+<p>You serve many resources, such as <code>/data/0xabc&hellip;/report</code> and <code>/data/0x123&hellip;/report</code>, but the Bazaar lists them as a single entry.</p>
+<h3>Fix</h3>
+<p>Coinbase's docs say the Bazaar turns any path segment that is entirely a UUID, an EVM address or transaction hash, or a Solana address or transaction hash into a generic route parameter. To keep resources listed separately, add a prefix or suffix so the segment isn't a bare identifier, such as <code>/user-&lt;uuid&gt;</code> instead of <code>/&lt;uuid&gt;</code>.</p>
+<div class="card check"><b>Check it with Unlisted:</b> Unlisted doesn't check this. Look up your payTo in the discovery API above to see how your routes were grouped.</div>
+
+<h2 id="dropped">14. The route dropped out after 30 days without a settlement</h2>
+<h3>Symptom</h3>
+<p>Your route was listed, and now it's gone from the catalog and search results.</p>
+<h3>Fix</h3>
+<p>Coinbase's docs say resources that go 30 days without a settlement are removed, and endpoints that stop returning a 402 are eventually removed too. A listed route needs ongoing paid traffic through CDP's facilitator. Keep sending <code>paymentPayload.extensions.bazaar</code> and <code>paymentPayload.resource</code> on every settlement: a Coinbase contributor said in {_CDP_835} that this keeps your quality metrics aggregating and your route listed.</p>
+{_check_box("bazaar_index_status", f"the {price} Check tells you whether CDP has the route indexed right now and, when it does, its 30-day calls and unique payers. The {paid_price} Check + real payment (<code>?mode=paid</code>) can make a settlement for routes priced up to $0.05.")}
 
 <h2 id="stuck-processing">If none of these fit: accepted as &ldquo;processing&rdquo;, never indexed</h2>
 <h3>Symptom</h3>
 <p>Your challenge is valid, a payment settled through CDP's facilitator, and the facilitator answered with <code>bazaar.status: "processing"</code>. CDP's own validation says the route would be accepted. Days later it still isn't in the catalog.</p>
 <h3>What's known</h3>
-<p>Several sellers have reported this, and as of {GUIDE_UPDATED} none of the reports has an answer from a maintainer: <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a>, <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a>, <a href="https://github.com/coinbase/cdp-sdk/issues/830">cdp-sdk #830</a> and <a href="https://github.com/coinbase/cdp-sdk/issues/835">cdp-sdk #835</a>. It looks like a problem on CDP's side, and there is no confirmed fix. &ldquo;Processing&rdquo; is also returned for routes that do get indexed, so that status alone tells you nothing either way.</p>
+<p>Coinbase's docs say <code>processing</code> means the metadata was accepted and is being cataloged asynchronously, and that it doesn't confirm indexing will succeed. Routes that do get indexed see it too, so it tells you nothing either way.</p>
+<p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 12) and {_CDP_835} (an external <code>$id</code> in the schema, cause 9). As of {GUIDE_UPDATED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
 <h3>What to try</h3>
-<p>Rule out causes 1 to 11 first, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change, because a settlement made while something was still wrong may not be picked up again. If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
+<p>Rule out causes 1 to 14 first, especially 12 and 9, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
+
+<h2 id="not-curated">Indexed, but not curated (<code>enriched: false</code>)</h2>
+<h3>Symptom</h3>
+<p>Your route is in the CDP Bazaar, but agentic.market's record for your service shows <code>enriched: false</code>, often with an empty category or description, and you're not in the featured slice. This is a different problem from not being indexed (see <a href="https://github.com/coinbase/cdp-sdk/issues/838">cdp-sdk #838</a>).</p>
+<h3>What it means</h3>
+<p>A Coinbase contributor explained in #838 that <code>enriched</code> is only turned on for the hand-picked editorial set of curated endpoints. Meeting the published criteria makes an endpoint eligible to be selected, not entitled to it: selection is at Coinbase's discretion, based on service quality, category coverage and ecosystem fit.</p>
+<p><a href="{OFFICIAL_CHECKLIST_URL}#requirements-for-curation">Coinbase's curation requirements</a> are: live x402 payments on mainnet, at least 99% availability over 30 days (above 99.5% gets priority), passing the platform health probe, agent-ready metadata (a complete input schema, a description that tells an agent when to use the endpoint, per-call pricing, supported networks and documented error responses), and passing validation. Curated endpoints that fail consecutive health probes are down-ranked, then dropped from the featured tier, and restored once they recover. The docs don't describe an application process.</p>
+<div class="card check"><b>Check it with Unlisted:</b> Unlisted reports whether your route is indexed. It doesn't check curation or enrichment. CDP's discovery API (the payTo lookup above) marks curated resources with <code>curated: true</code> and leaves the field out otherwise.</div>
 
 <h2>Check all of it in one call</h2>
 <p>Unlisted runs every check above against your endpoint and asks CDP for its live index status. No signup and no API key: you pay per call in USDC on Base through x402, and you're only charged if the check completes.</p>

@@ -36,13 +36,18 @@ def test_guide_stays_free_with_paywall_active():
     assert client.get("/sitemap.xml").status_code == 200
 
 
-def test_guide_has_eleven_anchored_causes():
+CAUSE_ANCHORS = ("no-payment", "other-facilitator", "extension-missing", "description",
+                 "http-resource", "resource-missing", "empty-body", "post-as-get",
+                 "schema-refs", "wildcard", "stale", "probe-rejected", "collapsed", "dropped")
+
+
+def test_guide_has_fourteen_anchored_causes():
     text = _client().get("/guide").text
-    for anchor in ("no-payment", "other-facilitator", "extension-missing", "description",
-                   "http-resource", "resource-missing", "empty-body", "post-as-get",
-                   "schema-refs", "wildcard", "stale"):
-        assert f'id="{anchor}"' in text
+    assert len(CAUSE_ANCHORS) == 14
+    for number, anchor in enumerate(CAUSE_ANCHORS, start=1):
+        assert f'<h2 id="{anchor}">{number}. ' in text, anchor
         assert f'href="#{anchor}"' in text
+    assert "Rule out causes 1 to 14" in text
 
 
 def test_guide_check_ids_exist_in_code():
@@ -143,3 +148,29 @@ def test_openapi_auth_modes_for_discovery():
     assert "x-payment-info" not in free["paths"]["/diagnose"]["post"]
     assert free["paths"]["/diagnose"]["post"]["security"] == []
     assert free["paths"]["/healthz"]["get"]["security"] == []
+
+
+def test_guide_links_official_checklist_first_and_is_dated():
+    text = _client().get("/guide").text
+    official = f'<a href="{guide.OFFICIAL_CHECKLIST_URL}">Get discovered (Bazaar)</a>'
+    assert official in text
+    assert text.index(official) < text.index('id="no-payment"')
+    assert "Updated October 3, 2026" in text
+    assert "<lastmod>2026-10-03</lastmod>" in _client().get("/sitemap.xml").text
+
+
+def test_guide_cites_coinbase_confirmations():
+    text = _client().get("/guide").text
+    facilitator = text[text.index('id="other-facilitator"'):text.index('id="extension-missing"')]
+    assert "https://github.com/coinbase/cdp-sdk/issues/827" in facilitator
+    assert "only surfaces resources that settle through the CDP Facilitator" in facilitator
+    assert "EXTENSION-RESPONSES" in text
+    assert "500 characters or fewer" in text and "under about 500" not in text
+
+
+def test_guide_curation_section_is_honest_about_scope():
+    text = _client().get("/guide").text
+    section = text[text.index('id="not-curated"'):text.index("<h2>Check all of it in one call</h2>")]
+    assert "https://github.com/coinbase/cdp-sdk/issues/838" in section
+    assert "It doesn't check curation or enrichment." in section
+    assert 'href="#not-curated"' in text
