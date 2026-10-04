@@ -103,18 +103,49 @@ def transport_for(app) -> httpx.ASGITransport:
 # --------------------------------------------------------------------------
 
 
+def _usdc_accept(**overrides):
+    accept = {
+        "network": "eip155:8453",
+        "asset": outbound_payment.USDC_BASE_ADDRESS,
+        "amount": "20000",
+        "extra": {"name": "USD Coin", "version": "2"},
+    }
+    accept.update(overrides)
+    return accept
+
+
+def test_usdc_base_address_matches_the_sdk_default_asset():
+    from x402.mechanisms.evm.default_assets import DEFAULT_ASSETS
+
+    assert outbound_payment.USDC_BASE_ADDRESS in [a["asset"] for a in DEFAULT_ASSETS["eip155:8453"]]
+
+
 def test_usd_price_of_accept_recognizes_usdc():
-    accept = {"amount": "20000", "extra": {"name": "USD Coin", "version": "2"}}
-    assert usd_price_of_accept(accept) == pytest.approx(0.02)
+    assert usd_price_of_accept(_usdc_accept()) == pytest.approx(0.02)
+
+
+def test_usd_price_of_accept_ignores_address_case():
+    for asset in (outbound_payment.USDC_BASE_ADDRESS.lower(), outbound_payment.USDC_BASE_ADDRESS.upper().replace("0X", "0x")):
+        assert usd_price_of_accept(_usdc_accept(asset=asset)) == pytest.approx(0.02)
+
+
+def test_usd_price_of_accept_rejects_other_token_named_usd_coin():
+    assert usd_price_of_accept(_usdc_accept(asset="0x" + "d" * 40)) is None
+    assert usd_price_of_accept(_usdc_accept(asset=None)) is None
+
+
+def test_usd_price_of_accept_rejects_other_network():
+    assert usd_price_of_accept(_usdc_accept(network="eip155:1")) is None
 
 
 def test_usd_price_of_accept_returns_none_for_unrecognized_asset():
-    accept = {"amount": "20000", "extra": {"name": "Some Other Token"}}
-    assert usd_price_of_accept(accept) is None
+    assert usd_price_of_accept(_usdc_accept(extra={"name": "Some Other Token"})) is None
 
 
 def test_usd_price_of_accept_returns_none_when_amount_missing():
-    assert usd_price_of_accept({"extra": {"name": "USD Coin"}}) is None
+    accept = _usdc_accept()
+    del accept["amount"]
+    assert usd_price_of_accept(accept) is None
 
 
 def test_select_payable_accept_picks_our_scheme_and_network():

@@ -66,6 +66,7 @@ from outbound_payment import (
     PaymentTestOutcome,
     attempt_payment,
     select_payable_accept,
+    USDC_BASE_ADDRESS,
     usd_price_of_accept,
 )
 from dry_check import _body_kwargs
@@ -187,8 +188,9 @@ async def _run_settlement_echo_check(
     price_usd = usd_price_of_accept(accept)
     if price_usd is None:
         return _unpaid(
-            "The target's price couldn't be read in USD (unrecognized asset), so no "
-            "test payment was made."
+            "The target's price couldn't be read in USD (unrecognized asset: test "
+            f"payments are only made in USDC on Base mainnet, contract {USDC_BASE_ADDRESS}), "
+            "so no test payment was made."
         )
 
     if not economic_ceiling.price_within_cap(price_usd):

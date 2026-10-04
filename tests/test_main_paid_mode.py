@@ -415,7 +415,8 @@ NOT_CHARGED = "You were not charged. Run the $0.02 Check for the diagnosis."
     [
         (["garbage402"], "couldn't be parsed as an x402 challenge"),
         ([_challenge(network="eip155:1")], "None of the target's payment options can be paid"),
-        ([_challenge(extra={"name": "Mystery Token", "version": "1"})], "couldn't be read in USD (unrecognized asset)"),
+        ([_challenge(extra={"name": "Mystery Token", "version": "1"})], "couldn't be read in USD (unrecognized asset"),
+        ([_challenge(asset="0x" + "d" * 40)], "only made in USDC on Base mainnet, contract 0x833589"),
         ([_challenge(amount="1000000")], "($1.0000) is above Unlisted's $0.05 cap"),
         ([_challenge(), _challenge(amount="1000000")], "spend controls refused to sign"),
         ([_challenge(), httpx.ConnectError("refused")], "couldn't reach the target again"),
@@ -463,3 +464,12 @@ def test_paid_attempted_payment_is_charged_whatever_the_outcome(paid_step):
     assert "payment-signature" in seen[-1].headers
     assert len(inbound.settle_calls) == 1
     assert main.paid_test_domain_limiter.current_count("target.seller.test") == 1
+
+
+def test_paid_usdc_address_in_any_case_is_paid_and_charged():
+    lower = _challenge(asset=outbound_payment.USDC_BASE_ADDRESS.lower())
+    transport, seen = _scripted_target(lower, lower, lower)  # paid request rejected with a 402
+    resp, inbound = _paid_call(transport)
+    assert resp.status_code == 200
+    assert "payment-signature" in seen[-1].headers
+    assert len(inbound.settle_calls) == 1

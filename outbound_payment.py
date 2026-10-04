@@ -59,6 +59,10 @@ SCHEME = "exact"
 # payment.py's DEFAULT_PRICE_USD comment for the inbound-side equivalent).
 _USDC_DECIMALS = 6
 _USDC_ASSET_NAME = "USD Coin"
+# Circle's native USDC contract on Base mainnet (the x402 SDK's own default
+# asset for eip155:8453). The only token a test payment is ever made in:
+# `extra.name` is seller-supplied, so it can't identify the token alone.
+USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 DEFAULT_TEST_WALLET_NAME = "x402-doctor-test-wallet"
 
@@ -94,6 +98,11 @@ def usd_price_of_accept(accept: dict[str, Any]) -> Optional[float]:
     the price," never "assume it's cheap." Callers should treat None as a
     reason to skip the real payment test, not a reason to guess.
     """
+    if accept.get("network") != NETWORK:
+        return None
+    asset = accept.get("asset")
+    if not isinstance(asset, str) or asset.lower() != USDC_BASE_ADDRESS.lower():
+        return None
     extra = accept.get("extra") or {}
     if extra.get("name") != _USDC_ASSET_NAME:
         return None
