@@ -348,3 +348,118 @@ def test_mode_paid_unreachable_or_blocked_target_keeps_the_paid_test_slot(monkey
 
     assert len(inbound.settle_calls) == 0
     assert main.paid_test_domain_limiter.current_count("target.seller.test") == 0
+
+
+# --------------------------------------------------------------------------
+# 402 but no test payment: 422 with only the reason, not charged, slot kept
+# --------------------------------------------------------------------------
+
+
+def _scripted_target(*steps):
+    """httpx transport answering request N with steps[N] (the last step
+    repeats). A step is a challenge dict (served as a 402, header and
+    body), "garbage402", "ok", or an exception to raise."""
+    from tests.test_dry_check import GOOD_CHALLENGE, _streaming_response
+
+    seen = []
+
+    def handler(request):
+        step = steps[min(len(seen), len(steps) - 1)]
+        seen.append(request)
+        if isinstance(step, Exception):
+            raise step
+        if step == "ok":
+            return _streaming_response(200, b'{"sentiment": "bullish"}')
+        if step == "garbage402":
+            return _streaming_response(402, b"<html>pay me</html>")
+        body = json.dumps(step).encode()
+        return _streaming_response(
+            402, body, headers={"payment-required": base64.b64encode(body).decode()}
+        )
+
+    return httpx.MockTransport(handler), seen
+
+
+def _challenge(**accept_overrides):
+    import copy
+
+    from tests.test_dry_check import GOOD_CHALLENGE
+
+    challenge = copy.deepcopy(GOOD_CHALLENGE)
+    challenge["resource"]["url"] = TARGET_URL
+    del challenge["extensions"]  # no example input, so no probe request
+    challenge["accepts"][0].update(accept_overrides)
+    return challenge
+
+
+def _paid_call(transport, inbound=None):
+    inbound = inbound or FakeFacilitatorClient()
+    app = main.create_app(
+        facilitator_client=inbound, pay_to=PAY_TO, outbound_signer=SIGNER, outbound_transport=transport
+    )
+    client = TestClient(app)
+    challenge = _decode_challenge(client.post("/diagnose?mode=paid", json={"url": TARGET_URL}))
+    resp = client.post(
+        "/diagnose?mode=paid",
+        json={"url": TARGET_URL},
+        headers={"PAYMENT-SIGNATURE": _payment_signature_header_for(challenge)},
+    )
+    return resp, inbound
+
+
+NOT_CHARGED = "You were not charged. Run the $0.02 Check for the diagnosis."
+
+
+@pytest.mark.parametrize(
+    "steps, reason",
+    [
+        (["garbage402"], "couldn't be parsed as an x402 challenge"),
+        ([_challenge(network="eip155:1")], "None of the target's payment options can be paid"),
+        ([_challenge(extra={"name": "Mystery Token", "version": "1"})], "couldn't be read in USD (unrecognized asset)"),
+        ([_challenge(amount="1000000")], "($1.0000) is above Unlisted's $0.05 cap"),
+        ([_challenge(), _challenge(amount="1000000")], "spend controls refused to sign"),
+        ([_challenge(), httpx.ConnectError("refused")], "couldn't reach the target again"),
+        ([_challenge(), "ok"], "answered 200 instead of a 402 when Unlisted requested it again"),
+    ],
+)
+def test_paid_402_without_test_payment_is_uncharged_reason_only(steps, reason):
+    transport, seen = _scripted_target(*steps)
+    resp, inbound = _paid_call(transport)
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert list(body) == ["detail"]  # no check results: not a free Check
+    assert reason in body["detail"]
+    assert body["detail"].endswith(NOT_CHARGED)
+    assert len(inbound.settle_calls) == 0
+    assert main.paid_test_domain_limiter.current_count("target.seller.test") == 0
+    assert not any("payment-signature" in r.headers for r in seen)
+
+
+def test_paid_daily_ceiling_says_try_again_later(monkeypatch):
+    monkeypatch.setattr(
+        main, "economic_ceiling", EconomicCeiling(per_request_cap=0.05, global_ceiling=0.001, window_seconds=86400)
+    )
+    resp, inbound = _paid_call(_scripted_target(_challenge())[0])
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "daily budget for test payments is used up" in detail
+    assert "Try paid mode again later." in detail and detail.endswith(NOT_CHARGED)
+    assert len(inbound.settle_calls) == 0
+    assert main.paid_test_domain_limiter.current_count("target.seller.test") == 0
+
+
+@pytest.mark.parametrize(
+    "paid_step",
+    [_challenge(), httpx.ConnectError("reset after send")],  # rejected, or failed in flight
+)
+def test_paid_attempted_payment_is_charged_whatever_the_outcome(paid_step):
+    transport, seen = _scripted_target(_challenge(), _challenge(), paid_step)
+    resp, inbound = _paid_call(transport)
+
+    assert resp.status_code == 200
+    settlement = [c for c in resp.json()["checks"] if c["check_id"] == "settlement_echo"][0]
+    assert settlement["status"] == "fail"
+    assert "payment-signature" in seen[-1].headers
+    assert len(inbound.settle_calls) == 1
+    assert main.paid_test_domain_limiter.current_count("target.seller.test") == 1

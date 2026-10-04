@@ -124,6 +124,10 @@ async def run_paid_check(
             checks=[],
             verdict="Could not parse the 402 response as an x402 challenge.",
             parse_error=str(e),
+            unpaid_reason=(
+                "The target returned a 402, but it couldn't be parsed as an x402 "
+                "challenge, so no test payment could be made."
+            ),
         )
 
     checks = run_checks(challenge, final_url=response.url)
@@ -134,7 +138,7 @@ async def run_paid_check(
     checks.append(await check_probe_response(challenge, response.url, _probe_fetch, method))
     accepts = extract_accepts(challenge)
 
-    settlement_check = await _run_settlement_echo_check(
+    settlement_check, unpaid_reason = await _run_settlement_echo_check(
         url=response.url,
         accepts=accepts,
         signer=signer,
@@ -157,6 +161,7 @@ async def run_paid_check(
         checks=checks,
         verdict=summarize(checks),
         curated=curated,
+        unpaid_reason=unpaid_reason,
     )
 
 
@@ -169,34 +174,34 @@ async def _run_settlement_echo_check(
     transport: Optional[Any],
     method: str = "GET",
     json_body: Optional[Any] = None,
-) -> CheckResult:
+) -> tuple[CheckResult, Optional[str]]:
+    """The settlement_echo check, plus the reason no test payment was made
+    (None when one was attempted, whatever its outcome)."""
     accept = select_payable_accept(accepts)
     if accept is None:
-        return _skip(
-            "None of this endpoint's accepted payment options use the scheme/network "
-            "this test wallet can pay with (exact, eip155:8453 / Base mainnet) -- "
-            "can't attempt a real payment test."
+        return _unpaid(
+            "None of the target's payment options can be paid by Unlisted's test wallet "
+            "(scheme exact, network eip155:8453, Base mainnet), so no test payment was made."
         )
 
     price_usd = usd_price_of_accept(accept)
     if price_usd is None:
-        return _skip(
-            "Couldn't confidently price this endpoint's payment requirement in USD "
-            "(unrecognized asset) -- skipping the real payment test rather than "
-            "guessing at whether it's within our safety cap."
+        return _unpaid(
+            "The target's price couldn't be read in USD (unrecognized asset), so no "
+            "test payment was made."
         )
 
     if not economic_ceiling.price_within_cap(price_usd):
-        return _skip(
-            f"This endpoint's price (${price_usd:.4f}) exceeds our per-request "
-            f"test-payment safety cap (${economic_ceiling.per_request_cap:.4f}) -- "
-            "skipping the real payment test."
+        return _unpaid(
+            f"The target's price (${price_usd:.4f}) is above Unlisted's "
+            f"${economic_ceiling.per_request_cap:.2f} cap for test payments, so no "
+            "test payment was made."
         )
 
     if not economic_ceiling.can_spend(price_usd):
-        return _skip(
-            "Today's outbound test-payment budget is exhausted -- skipping the real "
-            "payment test until the rolling 24h spend ceiling resets."
+        return _unpaid(
+            "Unlisted's daily budget for test payments is used up, so no test payment "
+            "was made. Try paid mode again later."
         )
 
     try:
@@ -209,18 +214,23 @@ async def _run_settlement_echo_check(
             method=method,
             json_body=json_body,
         )
-    except (SSRFBlocked, FetchError) as e:
-        return CheckResult(
-            check_id="settlement_echo",
-            status=Status.FAIL,
-            detail=f"Couldn't safely re-reach this endpoint to attempt the payment: {e}",
-            confidence=Confidence.CLIENT,
+    except (SSRFBlocked, FetchError):
+        # attempt_payment only raises these when no payment was sent.
+        return _unpaid(
+            "Unlisted couldn't reach the target again to make the test payment, so none was made."
         )
+
+    if not outcome.attempted:
+        return _unpaid(outcome.detail)
 
     if outcome.success:
         economic_ceiling.record_spend(price_usd)
 
-    return _outcome_to_check(outcome)
+    return _outcome_to_check(outcome), None
+
+
+def _unpaid(reason: str) -> tuple[CheckResult, str]:
+    return _skip(reason), reason
 
 
 def _skip(detail: str) -> CheckResult:

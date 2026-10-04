@@ -381,8 +381,8 @@ def create_app(
             f"or {paid_price} with ?mode=paid, which also makes one real test payment "
             "to the target. An unpaid request returns HTTP 402 with the payment "
             "requirements. You are only charged when the check completes (HTTP 200); "
-            "with ?mode=paid, a target that doesn't answer with a 402 gets its report as a "
-            "422 and you are not charged. Among the "
+            "with ?mode=paid, you are not charged when no test payment is made (HTTP 422). "
+            "Among the "
             "checks: schema_external_refs lists every external $ref/$id in the "
             "target's Bazaar declaration, extensions_placement fails when the Bazaar "
             "block is inside accepts[0] instead of at the top level, and probe_response "
@@ -398,10 +398,16 @@ def create_app(
                 "PAYMENT-REQUIRED header and mirrored in the JSON body."
             },
             422: {
-                "description": "Either the request body is invalid, or, with ?mode=paid, the "
-                "target answered with something other than a 402. In that case the body is the "
-                "usual report (empty checks, a verdict naming the likely cause), no test payment "
-                "was made, you are not charged, and the target domain's paid-test limit isn't used."
+                "description": "Not charged. Either the request body is invalid, or, with "
+                "?mode=paid, no test payment was made. If the target answered with something "
+                "other than a 402, the body is the usual report (empty checks, a verdict naming "
+                "the likely cause). If it answered with a 402 that Unlisted couldn't pay (the 402 "
+                "can't be parsed, no payable scheme/network, unrecognized asset, price above the "
+                "cap, daily test-payment budget used up, the payment client refused to sign, or "
+                "the target couldn't be reached or stopped returning a 402 before the payment was "
+                "sent), the body is only {\"detail\": reason}, with no check results: run the "
+                "dry Check for the diagnosis. Either way you are not charged and the target "
+                "domain's paid-test limit isn't used."
             },
         },
     )
@@ -516,6 +522,19 @@ def create_app(
                 f" You were not charged. Once the URL returns a 402, run the {price} "
                 "Check for a full diagnosis."
             )
+        # A 402 that still got no test payment (unpayable, over the cap, the
+        # daily ceiling...): same release and 422, but only the reason, so
+        # paid mode can't be used as a free Check.
+        if mode == "paid" and report.unpaid_reason and not unpaid_paid_mode:
+            paid_test_domain_limiter.release(domain)
+            log_submission(url, blocked=False, reason="no_test_payment", caller=caller)
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": f"{report.unpaid_reason} You were not charged. "
+                    f"Run the {price} Check for the diagnosis."
+                },
+            )
 
         log_submission(url, blocked=False, caller=caller)
         # Top-level answer first: is it in the Bazaar right now? Everything
@@ -523,6 +542,7 @@ def create_app(
         body = asdict(report)
         # `curated` belongs in the bazaar summary, next to index status.
         curated = body.pop("curated", None)
+        body.pop("unpaid_reason", None)
         bazaar_summary = bazaar.summarize_index_status(report.checks, curated)
         log_usage(
             url=url,

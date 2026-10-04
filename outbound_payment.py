@@ -161,46 +161,98 @@ async def attempt_payment(
     differently rather than reporting a blocked SSRF probe as a seller bug.
     """
     client = build_client(signer, max_price_usd=max_price_usd)
-    outer_transport = transport if transport is not None else SSRFSafeTransport()
-    payment_transport = x402AsyncTransport(client, transport=outer_transport)
+    # Records whether a payment-carrying request was ever handed to the
+    # network: the SDK wraps every error after its first, unpaid request in
+    # PaymentError, so the exception type alone can't say whether a signed
+    # payment went out.
+    recorder = _PaymentSentRecorder(transport if transport is not None else SSRFSafeTransport())
+    payment_transport = x402AsyncTransport(client, transport=recorder)
 
     try:
         async with httpx.AsyncClient(transport=payment_transport, timeout=timeout) as http:
             response = await http.request(method, url, json=json_body)
     except PaymentError as e:
-        # The SDK's own spend_controls refused to sign a payment for this
-        # amount -- should only happen if the target's price changed
-        # between our dry-check pricing decision and this attempt (a race,
-        # not a caller bug), since paid_check.py already checks the price
-        # against the same cap before ever calling this function.
+        if recorder.sent:
+            return PaymentTestOutcome(
+                attempted=True,
+                success=False,
+                price_usd=price_usd,
+                detail=f"The payment-carrying request failed: {e}",
+            )
+        # Refused before anything was sent -- normally the SDK's own
+        # spend_controls, which should only trip if the target's price
+        # changed between our dry-check pricing decision and this attempt
+        # (a race, not a caller bug), since paid_check.py already checks
+        # the price against the same cap before ever calling this function.
         return PaymentTestOutcome(
             attempted=False,
             skipped_reason=f"payment_client_rejected: {e}",
             price_usd=price_usd,
             detail=(
-                "The x402 client's own spend controls refused to pay this "
-                "amount -- the target's price may have changed since the "
-                "dry-check that priced it."
+                "The x402 payment client's spend controls refused to sign the payment "
+                "(the target's price may have changed since it was first read), so no "
+                "test payment was made."
             ),
         )
-    except (SSRFBlocked, FetchError):
+    except (SSRFBlocked, FetchError) as e:
+        if recorder.sent:
+            return PaymentTestOutcome(
+                attempted=True,
+                success=False,
+                price_usd=price_usd,
+                detail=f"The payment-carrying request failed: {e}",
+            )
         raise
-    except httpx.TimeoutException as e:
-        return PaymentTestOutcome(
-            attempted=True,
-            success=False,
-            price_usd=price_usd,
-            detail=f"Timed out waiting for a response after submitting payment: {e}",
-        )
     except httpx.HTTPError as e:
+        if not recorder.sent:
+            return PaymentTestOutcome(
+                attempted=False,
+                skipped_reason=f"unreachable: {e}",
+                price_usd=price_usd,
+                detail="Unlisted couldn't reach the target again to make the test payment, so none was made.",
+            )
+        kind = "Timed out waiting for a response" if isinstance(e, httpx.TimeoutException) else "Transport error"
         return PaymentTestOutcome(
             attempted=True,
             success=False,
             price_usd=price_usd,
-            detail=f"Transport error while attempting the real payment: {e}",
+            detail=f"{kind} after submitting payment: {e}",
+        )
+
+    if not recorder.sent:
+        return PaymentTestOutcome(
+            attempted=False,
+            skipped_reason=f"no_402_on_retry: {response.status_code}",
+            price_usd=price_usd,
+            final_status_code=response.status_code,
+            detail=(
+                f"The target answered {response.status_code} instead of a 402 when Unlisted "
+                "requested it again to pay, so no test payment was made."
+            ),
         )
 
     return _interpret_response(response, price_usd=price_usd)
+
+
+_PAYMENT_HEADERS = ("payment-signature", "x-payment")
+
+
+class _PaymentSentRecorder(httpx.AsyncBaseTransport):
+    """Pass-through transport that notes when a request carrying an x402
+    payment header is handed to the inner transport. Set before the send,
+    so a payment counts as attempted even if that request then fails."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport):
+        self._inner = inner
+        self.sent = False
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if any(h in request.headers for h in _PAYMENT_HEADERS):
+            self.sent = True
+        return await self._inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
 
 
 def _interpret_response(response: httpx.Response, *, price_usd: Optional[float]) -> PaymentTestOutcome:

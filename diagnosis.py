@@ -115,6 +115,9 @@ class DiagnosisReport:
     # CDP discovery's curated flag (bazaar.lookup_curated); None = unknown.
     # main.py moves it into the top-level `bazaar` summary.
     curated: Optional[bool] = None
+    # Paid mode only: why no test payment was made although the target
+    # answered with a 402. main.py answers with just this reason, uncharged.
+    unpaid_reason: Optional[str] = None
 
     @property
     def failures(self) -> list[CheckResult]:

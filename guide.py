@@ -321,7 +321,9 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - Check + real payment: {paid_price} per call, selected with ?mode=paid on the request URL. Also makes one real test payment to the target. Only for targets priced up to $0.05, and once per target domain per 24 hours.
 - You are only charged when the check completes (HTTP 200). 4xx and 5xx responses are not charged.
 - Check: a target that answers with something other than a 402 still gets a completed report (HTTP 200), so that call is charged.
-- Check + real payment: if the target answers with something other than a 402, no test payment is made. The report comes back as HTTP 422, you are not charged, and the target domain's once-per-24-hours paid test isn't used up.
+- Check + real payment: you are charged only when a test payment is attempted (a payment-carrying request is sent to the target), whatever its outcome. When none is made, the response is HTTP 422, you are not charged, and the target domain's once-per-24-hours paid test isn't used up:
+  - Target answers with something other than a 402: the body is the usual report, with empty checks and a verdict naming the likely cause.
+  - Target answers with a 402 Unlisted can't pay (the 402 can't be parsed, no payable scheme/network, unrecognized asset, price above the $0.05 cap, the daily test-payment budget is used up, the payment client refused to sign, or the target couldn't be reached or stopped returning a 402 before the payment was sent): the body is only {{"detail": "<reason> You were not charged. Run the {price} Check for the diagnosis."}}, with no check results. When the daily budget is used up, try paid mode again later.
 
 ## What you get back
 

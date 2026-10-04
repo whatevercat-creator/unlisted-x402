@@ -222,3 +222,53 @@ async def test_attempt_payment_propagates_ssrf_blocked_from_transport():
             price_usd=0.01,
             transport=BlockingTransport(),
         )
+
+
+class _ScriptedTransport(httpx.AsyncBaseTransport):
+    """Sends unpaid requests to `app`; answers a payment-carrying one with
+    `on_paid` (an exception to raise) or passes it through."""
+
+    def __init__(self, app, on_paid=None, unpaid_status=None):
+        self._inner = httpx.ASGITransport(app=app)
+        self._on_paid = on_paid
+        self._unpaid_status = unpaid_status
+
+    async def handle_async_request(self, request):
+        if "payment-signature" in request.headers and self._on_paid is not None:
+            raise self._on_paid
+        if self._unpaid_status is not None:
+            return httpx.Response(self._unpaid_status)
+        return await self._inner.handle_async_request(request)
+
+
+@pytest.mark.parametrize("error", [httpx.ConnectError("reset"), FetchError("reset"), httpx.ReadTimeout("slow")])
+async def test_attempt_payment_counts_a_failed_payment_request_as_attempted(error):
+    app, _ = make_target_app(price="$0.01")
+    outcome = await attempt_payment(
+        "http://target.test/resource", SIGNER, max_price_usd=0.05, price_usd=0.01,
+        transport=_ScriptedTransport(app, on_paid=error),
+    )
+    assert outcome.attempted is True
+    assert outcome.success is False
+
+
+async def test_attempt_payment_not_attempted_when_retry_isnt_a_402():
+    app, _ = make_target_app(price="$0.01")
+    outcome = await attempt_payment(
+        "http://target.test/resource", SIGNER, max_price_usd=0.05, price_usd=0.01,
+        transport=_ScriptedTransport(app, unpaid_status=200),
+    )
+    assert outcome.attempted is False
+    assert outcome.skipped_reason == "no_402_on_retry: 200"
+
+
+async def test_attempt_payment_not_attempted_when_unreachable_before_paying():
+    class Failing(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            raise httpx.ConnectTimeout("no route")
+
+    outcome = await attempt_payment(
+        "http://target.test/resource", SIGNER, max_price_usd=0.05, price_usd=0.01, transport=Failing()
+    )
+    assert outcome.attempted is False
+    assert outcome.skipped_reason.startswith("unreachable")
