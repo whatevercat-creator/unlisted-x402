@@ -63,6 +63,10 @@ _USDC_ASSET_NAME = "USD Coin"
 # asset for eip155:8453). The only token a test payment is ever made in:
 # `extra.name` is seller-supplied, so it can't identify the token alone.
 USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+# `extra.assetTransferMethod` values that mean EIP-3009 transferWithAuthorization
+# on the token itself: absent, or the SDK's explicit "eip3009". "permit2" (a
+# Permit2 signature over the token) is refused.
+_STANDARD_TRANSFER_METHODS = (None, "eip3009")
 
 DEFAULT_TEST_WALLET_NAME = "x402-doctor-test-wallet"
 
@@ -115,14 +119,42 @@ def usd_price_of_accept(accept: dict[str, Any]) -> Optional[float]:
         return None
 
 
-def select_payable_accept(accepts: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
-    """The first accepts[] entry this service can actually pay against:
-    our one supported scheme/network. Real challenges can list multiple
+def on_our_rails(accept: dict[str, Any]) -> bool:
+    """Our one supported scheme/network. Real challenges can list multiple
     scheme/network combinations; we only ever hold funds on one."""
+    return accept.get("scheme") == SCHEME and accept.get("network") == NETWORK
+
+
+def uses_standard_authorization(accept: dict[str, Any]) -> bool:
+    """EIP-3009 transferWithAuthorization, not Permit2."""
+    extra = accept.get("extra") or {}
+    return extra.get("assetTransferMethod") in _STANDARD_TRANSFER_METHODS
+
+
+def select_payable_accept(accepts: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """The first accepts[] entry this service can actually pay against: our
+    scheme/network, paid with the standard USDC authorization."""
     for accept in accepts:
-        if accept.get("scheme") == SCHEME and accept.get("network") == NETWORK:
+        if on_our_rails(accept) and uses_standard_authorization(accept):
             return accept
     return None
+
+
+def _only_usdc_authorization(version: int, reqs: list[Any]) -> list[Any]:
+    """x402Client policy: the SDK picks what to sign from its own fetch of
+    the 402, which the target can change after paid_check priced it, so
+    the same rules are enforced again at signing time. An empty result
+    makes the SDK refuse to sign (PaymentError, nothing sent)."""
+    return [
+        r
+        for r in reqs
+        if version == 2
+        and r.scheme == SCHEME
+        and r.network == NETWORK
+        and isinstance(r.asset, str)
+        and r.asset.lower() == USDC_BASE_ADDRESS.lower()
+        and (r.extra or {}).get("assetTransferMethod") in _STANDARD_TRANSFER_METHODS
+    ]
 
 
 def build_client(signer: Any, *, max_price_usd: float) -> x402Client:
@@ -138,6 +170,7 @@ def build_client(signer: Any, *, max_price_usd: float) -> x402Client:
     client = x402Client()
     register_exact_evm_client(client, signer, networks=[NETWORK])
     client.set_spend_controls({"max_amount_per_payment": f"${max_price_usd:.6f}"})
+    client.register_policy(_only_usdc_authorization)
     return client
 
 
@@ -198,9 +231,9 @@ async def attempt_payment(
             skipped_reason=f"payment_client_rejected: {e}",
             price_usd=price_usd,
             detail=(
-                "The x402 payment client's spend controls refused to sign the payment "
-                "(the target's price may have changed since it was first read), so no "
-                "test payment was made."
+                "The x402 payment client's spend controls or payment policy refused to "
+                "sign the payment (the target's price or payment options may have changed "
+                "since they were first read), so no test payment was made."
             ),
         )
     except (SSRFBlocked, FetchError) as e:

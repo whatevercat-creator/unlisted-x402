@@ -303,3 +303,32 @@ async def test_attempt_payment_not_attempted_when_unreachable_before_paying():
     )
     assert outcome.attempted is False
     assert outcome.skipped_reason.startswith("unreachable")
+
+
+def test_select_payable_accept_skips_permit2_options():
+    eip3009 = {"scheme": "exact", "network": "eip155:8453", "extra": {"name": "USD Coin"}}
+    explicit = {"scheme": "exact", "network": "eip155:8453", "extra": {"assetTransferMethod": "eip3009"}}
+    permit2 = {"scheme": "exact", "network": "eip155:8453", "extra": {"assetTransferMethod": "permit2"}}
+    assert outbound_payment.select_payable_accept([permit2, eip3009]) is eip3009
+    assert outbound_payment.select_payable_accept([explicit]) is explicit
+    assert outbound_payment.select_payable_accept([permit2]) is None
+    assert outbound_payment.on_our_rails(permit2)
+
+
+def test_client_policy_only_keeps_usdc_eip3009_on_base():
+    from x402.schemas import PaymentRequirements
+
+    def req(**overrides):
+        fields = dict(
+            scheme="exact", network="eip155:8453", asset=outbound_payment.USDC_BASE_ADDRESS.lower(),
+            amount="10000", pay_to=SELLER_PAY_TO, max_timeout_seconds=60, extra={"name": "USD Coin"},
+        )
+        fields.update(overrides)
+        return PaymentRequirements(**fields)
+
+    good = req()
+    kept = outbound_payment._only_usdc_authorization(
+        2, [good, req(extra={"assetTransferMethod": "permit2"}), req(asset="0x" + "d" * 40), req(network="eip155:1")]
+    )
+    assert kept == [good]
+    assert outbound_payment._only_usdc_authorization(1, [good]) == []

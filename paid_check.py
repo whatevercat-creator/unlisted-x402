@@ -65,6 +65,7 @@ from limits import EconomicCeiling
 from outbound_payment import (
     PaymentTestOutcome,
     attempt_payment,
+    on_our_rails,
     select_payable_accept,
     USDC_BASE_ADDRESS,
     usd_price_of_accept,
@@ -179,6 +180,12 @@ async def _run_settlement_echo_check(
     """The settlement_echo check, plus the reason no test payment was made
     (None when one was attempted, whatever its outcome)."""
     accept = select_payable_accept(accepts)
+    if accept is None and any(on_our_rails(a) for a in accepts):
+        return _unpaid(
+            "The target only offers Permit2 payments, and test payments use the standard "
+            "USDC authorization (EIP-3009 transferWithAuthorization) only, so no test "
+            "payment was made."
+        )
     if accept is None:
         return _unpaid(
             "None of the target's payment options can be paid by Unlisted's test wallet "

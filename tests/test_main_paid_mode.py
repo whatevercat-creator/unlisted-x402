@@ -418,7 +418,14 @@ NOT_CHARGED = "You were not charged. Run the $0.02 Check for the diagnosis."
         ([_challenge(extra={"name": "Mystery Token", "version": "1"})], "couldn't be read in USD (unrecognized asset"),
         ([_challenge(asset="0x" + "d" * 40)], "only made in USDC on Base mainnet, contract 0x833589"),
         ([_challenge(amount="1000000")], "($1.0000) is above Unlisted's $0.05 cap"),
-        ([_challenge(), _challenge(amount="1000000")], "spend controls refused to sign"),
+        ([_challenge(), _challenge(amount="1000000")], "spend controls or payment policy refused to sign"),
+        ([_challenge(extra={"name": "USD Coin", "version": "2", "assetTransferMethod": "permit2"})],
+         "only offers Permit2 payments, and test payments use the standard USDC authorization"),
+        # The target switches what it offers after Unlisted priced it: the SDK
+        # policy refuses to sign, and nothing is sent.
+        ([_challenge(), _challenge(extra={"name": "USD Coin", "version": "2", "assetTransferMethod": "permit2"})],
+         "payment policy refused to sign"),
+        ([_challenge(), _challenge(asset="0x" + "d" * 40)], "payment policy refused to sign"),
         ([_challenge(), httpx.ConnectError("refused")], "couldn't reach the target again"),
         ([_challenge(), "ok"], "answered 200 instead of a 402 when Unlisted requested it again"),
     ],
@@ -472,4 +479,19 @@ def test_paid_usdc_address_in_any_case_is_paid_and_charged():
     resp, inbound = _paid_call(transport)
     assert resp.status_code == 200
     assert "payment-signature" in seen[-1].headers
+    assert len(inbound.settle_calls) == 1
+
+
+def test_paid_prefers_the_eip3009_option_over_a_listed_permit2_one():
+    challenge = _challenge()
+    permit2 = dict(challenge["accepts"][0], extra={"name": "USD Coin", "version": "2", "assetTransferMethod": "permit2"})
+    challenge["accepts"] = [permit2, challenge["accepts"][0]]
+    transport, seen = _scripted_target(challenge, challenge, challenge)
+    resp, inbound = _paid_call(transport)
+
+    assert resp.status_code == 200
+    signed = json.loads(base64.b64decode(seen[-1].headers["payment-signature"]))
+    assert "authorization" in signed["payload"]  # EIP-3009, not permit2Authorization
+    assert "permit2Authorization" not in signed["payload"]
+    assert signed["accepted"]["extra"].get("assetTransferMethod") is None
     assert len(inbound.settle_calls) == 1
