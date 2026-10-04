@@ -319,7 +319,9 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 
 - Check: {price} per call. Reads the target's 402 challenge and Bazaar declaration, and asks CDP for its live index status.
 - Check + real payment: {paid_price} per call, selected with ?mode=paid on the request URL. Also makes one real test payment to the target. Only for targets priced up to $0.05, and once per target domain per 24 hours.
-- You are only charged when the check completes (HTTP 200). 4xx and 5xx responses are not charged. A target that answers with something other than a 402 still gets a completed report (HTTP 200), so that call is charged.
+- You are only charged when the check completes (HTTP 200). 4xx and 5xx responses are not charged.
+- Check: a target that answers with something other than a 402 still gets a completed report (HTTP 200), so that call is charged.
+- Check + real payment: if the target answers with something other than a 402, no test payment is made. The report comes back as HTTP 422, you are not charged, and the target domain's once-per-24-hours paid test isn't used up.
 
 ## What you get back
 

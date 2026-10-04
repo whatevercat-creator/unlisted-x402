@@ -242,3 +242,77 @@ def test_dry_mode_against_same_domain_is_unaffected_by_paid_test_limit(monkeypat
     dry = client.post("/diagnose", json={"url": TARGET_URL}, headers={"PAYMENT-SIGNATURE": dry_header})
     assert dry.status_code == 200
     assert dry.json()["mode"] == "dry"
+
+
+def _target_answering_400():
+    app = FastAPI()
+
+    @app.get("/sentiment/BTC")
+    async def resource():
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=400, content={"error": "missing window"})
+
+    return app
+
+
+def test_mode_paid_non_402_target_is_not_charged_and_keeps_the_paid_test_slot():
+    inbound = FakeFacilitatorClient()
+    app = main.create_app(
+        facilitator_client=inbound,
+        pay_to=PAY_TO,
+        outbound_signer=SIGNER,
+        outbound_transport=httpx.ASGITransport(app=_target_answering_400()),
+    )
+    client = TestClient(app)
+
+    for _ in range(2):  # a repeat within 24h isn't blocked: no slot was used
+        challenge = _decode_challenge(client.post("/diagnose?mode=paid", json={"url": TARGET_URL}))
+        resp = client.post(
+            "/diagnose?mode=paid",
+            json={"url": TARGET_URL},
+            headers={"PAYMENT-SIGNATURE": _payment_signature_header_for(challenge)},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["mode"] == "paid"
+        assert body["http_status"] == 400
+        assert body["checks"] == []
+        assert "validation is most likely running before the paywall" in body["verdict"]
+        assert body["verdict"].endswith(
+            f"You were not charged. Once the URL returns a 402, run the "
+            f"{payment.DEFAULT_PRICE_USD} Check for a full diagnosis."
+        )
+        assert "payment-response" not in resp.headers
+
+    assert len(inbound.verify_calls) == 2
+    assert len(inbound.settle_calls) == 0
+    assert main.paid_test_domain_limiter.current_count("target.seller.test") == 0
+
+
+def test_mode_paid_402_target_still_charged_and_uses_the_slot():
+    target_app, _ = make_target_app()
+    inbound = FakeFacilitatorClient()
+    app = main.create_app(
+        facilitator_client=inbound,
+        pay_to=PAY_TO,
+        outbound_signer=SIGNER,
+        outbound_transport=httpx.ASGITransport(app=target_app),
+    )
+    client = TestClient(app)
+    challenge = _decode_challenge(client.post("/diagnose?mode=paid", json={"url": TARGET_URL}))
+    resp = client.post(
+        "/diagnose?mode=paid",
+        json={"url": TARGET_URL},
+        headers={"PAYMENT-SIGNATURE": _payment_signature_header_for(challenge)},
+    )
+    assert resp.status_code == 200
+    assert "not charged" not in resp.json()["verdict"]
+    assert len(inbound.settle_calls) == 1
+    assert main.paid_test_domain_limiter.current_count("target.seller.test") == 1
+
+
+def test_openapi_documents_the_unpaid_422():
+    op = TestClient(main.create_app()).get("/openapi.json").json()["paths"]["/diagnose"]["post"]
+    assert "you are not charged" in op["responses"]["422"]["description"]
+    assert "422" in op["description"]

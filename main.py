@@ -66,6 +66,7 @@ from typing import Any, Literal, Optional
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from html import escape
 
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
@@ -379,7 +380,9 @@ def create_app(
             f"Paid per call over x402 in USDC on Base mainnet: {price} per check, "
             f"or {paid_price} with ?mode=paid, which also makes one real test payment "
             "to the target. An unpaid request returns HTTP 402 with the payment "
-            "requirements. You are only charged when the check completes. Among the "
+            "requirements. You are only charged when the check completes (HTTP 200); "
+            "with ?mode=paid, a target that doesn't answer with a 402 gets its report as a "
+            "422 and you are not charged. Among the "
             "checks: schema_external_refs lists every external $ref/$id in the "
             "target's Bazaar declaration, extensions_placement fails when the Bazaar "
             "block is inside accepts[0] instead of at the top level, and probe_response "
@@ -393,7 +396,13 @@ def create_app(
             402: {
                 "description": "Payment required. The requirements are in the "
                 "PAYMENT-REQUIRED header and mirrored in the JSON body."
-            }
+            },
+            422: {
+                "description": "Either the request body is invalid, or, with ?mode=paid, the "
+                "target answered with something other than a 402. In that case the body is the "
+                "usual report (empty checks, a verdict naming the likely cause), no test payment "
+                "was made, you are not charged, and the target domain's paid-test limit isn't used."
+            },
         },
     )
     async def diagnose(payload: DiagnoseRequest, request: Request) -> dict[str, Any]:
@@ -492,6 +501,17 @@ def create_app(
             log_submission(url, blocked=False, reason=f"fetch_error: {e}", caller=caller)
             raise HTTPException(status_code=502, detail=f"Could not fetch target: {e}") from e
 
+        # Paid mode against a target that didn't answer with a 402: no test
+        # payment happened, so the paid-test slot is given back and the
+        # report goes out as a 422, which the paywall never settles.
+        unpaid_paid_mode = mode == "paid" and report.http_status != 402
+        if unpaid_paid_mode:
+            paid_test_domain_limiter.release(domain)
+            report.verdict += (
+                f" You were not charged. Once the URL returns a 402, run the {price} "
+                "Check for a full diagnosis."
+            )
+
         log_submission(url, blocked=False, caller=caller)
         # Top-level answer first: is it in the Bazaar right now? Everything
         # else (verdict, per-check detail) follows unchanged.
@@ -509,11 +529,14 @@ def create_app(
             bazaar_summary=bazaar_summary,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
-        return {
+        result = {
             "bazaar": bazaar_summary,
             **body,
             "method": payload.method,
         }
+        if unpaid_paid_mode:
+            return JSONResponse(status_code=422, content=jsonable_encoder(result))
+        return result
 
     @fastapi_app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:

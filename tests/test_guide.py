@@ -231,3 +231,9 @@ def test_guide_covers_misplaced_extensions_and_bare_400():
     assert "extensions_placement" in llms and "input validation running before the paywall" in llms
     description = client.get("/openapi.json").json()["paths"]["/diagnose"]["post"]["description"]
     assert "extensions_placement" in description
+
+
+def test_llms_txt_describes_charging_per_mode():
+    llms = _client().get("/llms.txt").text
+    assert "Check: a target that answers with something other than a 402 still gets a completed report (HTTP 200), so that call is charged." in llms
+    assert "The report comes back as HTTP 422, you are not charged" in llms

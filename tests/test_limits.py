@@ -229,3 +229,16 @@ def test_log_submission_drops_query_string(caplog):
     assert record["url"] == "https://api.example.com/data"
     assert record["domain"] == "api.example.com"
     assert "secret123" not in caplog.records[0].message
+
+
+def test_release_gives_back_the_most_recent_hit():
+    from limits import RateLimitExceeded, SlidingWindowRateLimiter
+
+    limiter = SlidingWindowRateLimiter(limit=1, window_seconds=60)
+    limiter.check_and_record("a.test")
+    limiter.release("a.test")
+    assert limiter.current_count("a.test") == 0
+    limiter.check_and_record("a.test")  # not blocked
+    limiter.release("b.test")  # no hits: a no-op
+    with pytest.raises(RateLimitExceeded):
+        limiter.check_and_record("a.test")

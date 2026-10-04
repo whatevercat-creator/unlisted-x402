@@ -91,6 +91,14 @@ class SlidingWindowRateLimiter:
                 raise RateLimitExceeded(scope, key, self.limit, self.window_seconds)
             hits.append(self._clock())
 
+    def release(self, key: str) -> None:
+        """Undo the most recent check_and_record for `key`, for a call that
+        turned out not to use what the limit protects."""
+        with self._lock:
+            hits = self._prune(key)
+            if hits:
+                hits.pop()
+
     def current_count(self, key: str) -> int:
         with self._lock:
             return len(self._prune(key))
