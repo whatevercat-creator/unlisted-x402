@@ -496,9 +496,14 @@ def create_app(
             # IP vs. redirect vs. something else) to avoid handing back a
             # network-mapping oracle to someone probing internal addresses.
             log_submission(url, blocked=True, reason="ssrf_blocked", caller=caller)
+            if mode == "paid":
+                # Raised only by the initial fetch, so no test payment was made.
+                paid_test_domain_limiter.release(domain)
             raise HTTPException(status_code=400, detail="This URL can't be checked.") from e
         except FetchError as e:
             log_submission(url, blocked=False, reason=f"fetch_error: {e}", caller=caller)
+            if mode == "paid":
+                paid_test_domain_limiter.release(domain)
             raise HTTPException(status_code=502, detail=f"Could not fetch target: {e}") from e
 
         # Paid mode against a target that didn't answer with a 402: no test

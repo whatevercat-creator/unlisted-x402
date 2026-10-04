@@ -316,3 +316,35 @@ def test_openapi_documents_the_unpaid_422():
     op = TestClient(main.create_app()).get("/openapi.json").json()["paths"]["/diagnose"]["post"]
     assert "you are not charged" in op["responses"]["422"]["description"]
     assert "422" in op["description"]
+
+
+@pytest.mark.parametrize(
+    "error, status",
+    [(sf.FetchError("connection refused"), 502), (sf.SSRFBlocked("private address"), 400)],
+)
+def test_mode_paid_unreachable_or_blocked_target_keeps_the_paid_test_slot(monkeypatch, error, status):
+    inbound = FakeFacilitatorClient()
+    app = main.create_app(
+        facilitator_client=inbound,
+        pay_to=PAY_TO,
+        outbound_signer=SIGNER,
+        outbound_transport=httpx.ASGITransport(app=make_target_app()[0]),
+    )
+
+    async def _raise(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(main, "run_paid_check", _raise)
+    client = TestClient(app)
+
+    for _ in range(2):  # a repeat within 24h isn't blocked: no slot was used
+        challenge = _decode_challenge(client.post("/diagnose?mode=paid", json={"url": TARGET_URL}))
+        resp = client.post(
+            "/diagnose?mode=paid",
+            json={"url": TARGET_URL},
+            headers={"PAYMENT-SIGNATURE": _payment_signature_header_for(challenge)},
+        )
+        assert resp.status_code == status
+
+    assert len(inbound.settle_calls) == 0
+    assert main.paid_test_domain_limiter.current_count("target.seller.test") == 0
