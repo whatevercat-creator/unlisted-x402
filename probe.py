@@ -25,15 +25,12 @@ import re
 from typing import Any, Awaitable, Callable, Optional
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 
-from diagnosis import CheckResult, Confidence, Status, _extensions_value, extract_accepts
+from diagnosis import VALIDATION_STATUSES, CheckResult, Confidence, Status, _extensions_value, extract_accepts
 from safe_fetch import SSRFBlocked
 
 # RFC 2606 reserved example domains: never probed (and rejected as /diagnose
 # targets in main.py).
 EXAMPLE_DOMAINS = ("example.com", "example.org", "example.net")
-
-# Statuses that mean input validation answered before the paywall.
-VALIDATION_STATUSES = (400, 409, 422)
 
 _METHODS = ("GET", "HEAD", "DELETE", "POST", "PUT", "PATCH")
 _BODY_METHODS = ("POST", "PUT", "PATCH")

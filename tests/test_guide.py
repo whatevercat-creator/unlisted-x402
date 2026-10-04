@@ -37,18 +37,18 @@ def test_guide_stays_free_with_paywall_active():
     assert client.get("/sitemap.xml").status_code == 200
 
 
-CAUSE_ANCHORS = ("no-payment", "other-facilitator", "extension-missing", "description",
+CAUSE_ANCHORS = ("no-payment", "other-facilitator", "extension-missing", "extension-placement", "description",
                  "http-resource", "resource-missing", "empty-body", "post-as-get",
                  "schema-refs", "wildcard", "stale", "probe-rejected", "collapsed", "dropped")
 
 
-def test_guide_has_fourteen_anchored_causes():
+def test_guide_has_fifteen_anchored_causes():
     text = _client().get("/guide").text
-    assert len(CAUSE_ANCHORS) == 14
+    assert len(CAUSE_ANCHORS) == 15
     for number, anchor in enumerate(CAUSE_ANCHORS, start=1):
         assert f'<h2 id="{anchor}">{number}. ' in text, anchor
         assert f'href="#{anchor}"' in text
-    assert "Rule out causes 1 to 14" in text
+    assert "Rule out causes 1 to 15" in text
 
 
 def test_guide_check_ids_exist_in_code():
@@ -156,8 +156,8 @@ def test_guide_links_official_checklist_first_and_is_dated():
     official = f'<a href="{guide.OFFICIAL_CHECKLIST_URL}">Get discovered (Bazaar)</a>'
     assert official in text
     assert text.index(official) < text.index('id="no-payment"')
-    assert "Updated October 3, 2026" in text
-    assert "<lastmod>2026-10-03</lastmod>" in _client().get("/sitemap.xml").text
+    assert "Updated October 4, 2026" in text
+    assert "<lastmod>2026-10-04</lastmod>" in _client().get("/sitemap.xml").text
 
 
 def test_guide_cites_coinbase_confirmations():
@@ -213,3 +213,21 @@ def test_guide_and_llms_describe_schema_refs_and_probe_checks():
     assert "schema_external_refs" in llms and "probe_response" in llms
     description = client.get("/openapi.json").json()["paths"]["/diagnose"]["post"]["description"]
     assert "schema_external_refs" in description and "probe_response" in description
+
+
+def test_guide_covers_misplaced_extensions_and_bare_400():
+    client = _client()
+    text = client.get("/guide").text
+    placement = text[text.index('<h2 id="extension-placement">') : text.index('<h2 id="description">')]
+    assert "<code>extensions_placement</code> check covers this" in placement
+    assert "next to <code>accepts</code>" in placement
+    assert guide.X402_SPEC_V2_URL in placement
+    probe_section = text[text.index('<h2 id="probe-rejected">') : text.index('<h2 id="collapsed">')]
+    assert "A bare request or CDP's probe gets a 400" in probe_section
+    assert "never see your price" in probe_section
+    assert "validation is most likely running before the paywall" in probe_section
+    assert "inside accepts" in text[: text.index("</head>")]
+    llms = client.get("/llms.txt").text
+    assert "extensions_placement" in llms and "input validation running before the paywall" in llms
+    description = client.get("/openapi.json").json()["paths"]["/diagnose"]["post"]["description"]
+    assert "extensions_placement" in description

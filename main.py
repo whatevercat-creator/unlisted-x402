@@ -381,8 +381,12 @@ def create_app(
             "to the target. An unpaid request returns HTTP 402 with the payment "
             "requirements. You are only charged when the check completes. Among the "
             "checks: schema_external_refs lists every external $ref/$id in the "
-            "target's Bazaar declaration, and probe_response sends the declaration's "
-            "example input to the target unpaid, as CDP's indexer does, and expects a 402."
+            "target's Bazaar declaration, extensions_placement fails when the Bazaar "
+            "block is inside accepts[0] instead of at the top level, and probe_response "
+            "sends the declaration's example input to the target unpaid, as CDP's indexer "
+            "does, and expects a 402. A target that answers with something other than a "
+            "402 gets a verdict naming the likely cause, such as validation running "
+            "before the paywall."
         ),
         openapi_extra=diagnose_openapi,
         responses={

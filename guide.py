@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from html import escape
 
-GUIDE_UPDATED = "October 3, 2026"
-GUIDE_UPDATED_ISO = "2026-10-03"
+GUIDE_UPDATED = "October 4, 2026"
+GUIDE_UPDATED_ISO = "2026-10-04"
+# The x402 v2 spec, for where `extensions` belongs in a 402.
+X402_SPEC_V2_URL = "https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md"
 # Coinbase's own discovery checklist, linked near the top as the official source.
 OFFICIAL_CHECKLIST_URL = "https://docs.cdp.coinbase.com/x402/seller/get-discovered"
 CANONICAL_URL = "https://unlisted.sh/guide"
@@ -26,6 +28,7 @@ REFERENCED_CHECK_IDS = (
     "bazaar_index_status",
     "settlement_echo",
     "bazaar_extension",
+    "extensions_placement",
     "description_length",
     "scheme_mismatch",
     "resource_present",
@@ -81,7 +84,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Why your x402 endpoint isn&#x27;t in the CDP Bazaar (and how to fix it) | Unlisted</title>
-<meta name="description" content="Why the CDP Bazaar isn't indexing your x402 endpoint: no settled payment yet, a missing extensions.bazaar, an http:// resource URL, a long description, external schema $refs, and more, each with its fix.">
+<meta name="description" content="Why the CDP Bazaar isn't indexing your x402 endpoint: no settled payment yet, a missing extensions.bazaar or one inside accepts, a route that answers 400 before the paywall, an http:// resource URL, a long description, external schema $refs, and more, each with its fix.">
 <link rel="canonical" href="{CANONICAL_URL}">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/logo.png">
@@ -109,6 +112,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#no-payment">No payment has settled through CDP yet</a></li>
 <li><a href="#other-facilitator">Payments settle through a different facilitator</a></li>
 <li><a href="#extension-missing">extensions.bazaar is missing or malformed</a></li>
+<li><a href="#extension-placement">extensions sits inside accepts instead of next to it</a></li>
 <li><a href="#description">The description is too long</a></li>
 <li><a href="#http-resource">resource.url says http:// behind a proxy</a></li>
 <li><a href="#resource-missing">The resource field is missing</a></li>
@@ -117,7 +121,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#schema-refs">External $ref/$id in a schema, or paymentPayload.resource not sent</a></li>
 <li><a href="#wildcard">The route uses a bare wildcard</a></li>
 <li><a href="#stale">You changed price or metadata and the listing didn't update</a></li>
-<li><a href="#probe-rejected">CDP's probe gets an error instead of a 402</a></li>
+<li><a href="#probe-rejected">A bare request or CDP's probe gets a 400 instead of a 402</a></li>
 <li><a href="#collapsed">Several URLs collapse into one entry</a></li>
 <li><a href="#dropped">The route dropped out after 30 days without a settlement</a></li>
 </ol>
@@ -127,16 +131,18 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <div class="scroll"><table>
 <tr><th>What you see</th><th>Most likely cause</th></tr>
 <tr><td>Nobody has paid the route yet</td><td><a href="#no-payment">1</a></td></tr>
-<tr><td>Real payments have landed, still not listed</td><td><a href="#other-facilitator">2</a>, then <a href="#extension-missing">3</a> and <a href="#description">4</a></td></tr>
-<tr><td>Your app runs behind Render, Railway, Fly, Heroku, nginx or a load balancer</td><td><a href="#http-resource">5</a></td></tr>
-<tr><td>Some x402 clients say there are no payment options</td><td><a href="#empty-body">7</a></td></tr>
+<tr><td>Real payments have landed, still not listed</td><td><a href="#other-facilitator">2</a>, then <a href="#extension-missing">3</a>, <a href="#extension-placement">4</a> and <a href="#description">5</a></td></tr>
+<tr><td>Your app runs behind Render, Railway, Fly, Heroku, nginx or a load balancer</td><td><a href="#http-resource">6</a></td></tr>
+<tr><td>A plain request to your route, without its parameters, gets a 400, 409 or 422</td><td><a href="#probe-rejected">13</a></td></tr>
+<tr><td>Your decoded challenge has <code>extensions</code> inside an <code>accepts</code> entry</td><td><a href="#extension-placement">4</a></td></tr>
+<tr><td>Some x402 clients say there are no payment options</td><td><a href="#empty-body">8</a></td></tr>
 <tr><td>CDP's facilitator answered <code>rejected</code></td><td><a href="#extension-missing">3</a> (read <code>rejectedReason</code>)</td></tr>
-<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#probe-rejected">12</a> and <a href="#schema-refs">9</a>, then <a href="#stuck-processing">the open reports</a></td></tr>
-<tr><td>Was listed, now gone</td><td><a href="#dropped">14</a></td></tr>
-<tr><td>Several of your URLs show up as one entry</td><td><a href="#collapsed">13</a></td></tr>
+<tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#probe-rejected">13</a> and <a href="#schema-refs">10</a>, then <a href="#stuck-processing">the open reports</a></td></tr>
+<tr><td>Was listed, now gone</td><td><a href="#dropped">15</a></td></tr>
+<tr><td>Several of your URLs show up as one entry</td><td><a href="#collapsed">14</a></td></tr>
 <tr><td>Listed, but agentic.market shows <code>enriched: false</code></td><td><a href="#not-curated">Not curated</a></td></tr>
-<tr><td>Listed, but with the wrong method or no input schema</td><td><a href="#post-as-get">8</a></td></tr>
-<tr><td>Listed, but showing an old price or description</td><td><a href="#stale">11</a></td></tr>
+<tr><td>Listed, but with the wrong method or no input schema</td><td><a href="#post-as-get">9</a></td></tr>
+<tr><td>Listed, but showing an old price or description</td><td><a href="#stale">12</a></td></tr>
 </table></div>
 
 <h2>CDP Bazaar not indexing your route? Ask it directly first</h2>
@@ -168,14 +174,21 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <p>Also check the paying side. The settle request has to carry <code>paymentPayload.extensions.bazaar</code>, so a client that drops the extension when it sends the payment leaves CDP with nothing to index (see <a href="https://github.com/x402-foundation/x402/issues/3557">x402 #3557</a>).</p>
 {_check_box("bazaar_extension", "the Check decodes your challenge and validates the declaration's structure. It doesn't validate your example input against <code>schema.properties.input</code>, so if CDP's facilitator answers <code>rejected</code>, its <code>rejectedReason</code> is the place to look.")}
 
-<h2 id="description">4. The description is too long</h2>
+<h2 id="extension-placement">4. <code>extensions</code> sits inside <code>accepts</code> instead of next to it</h2>
+<h3>Symptom</h3>
+<p>Your 402 has a complete Bazaar declaration, but it's inside a payment option, at <code>accepts[0].extensions.bazaar</code>, instead of at the top level of the 402 body. Payments settle and nothing is indexed. It's an easy mistake in hand-rolled 402 responses, and in code ported from x402 v1, where discovery metadata sat inside each payment option as <code>outputSchema</code>.</p>
+<h3>Fix</h3>
+<p>Move <code>extensions</code> to the top level of the 402 body, next to <code>accepts</code>, and to the same place in the decoded <code>PAYMENT-REQUIRED</code> header. The <a href="{X402_SPEC_V2_URL}">x402 v2 specification</a> defines <code>extensions</code> on the 402 response itself, and an <code>accepts</code> entry has no such field. Clients copy the top-level <code>extensions</code> into the payment they send, and the x402 SDK drops an <code>extensions</code> key it finds inside an <code>accepts</code> entry, so CDP never gets your declaration. Then make a new settlement.</p>
+{_check_box("extensions_placement", "the Check fails when it finds the Bazaar block inside <code>accepts[0]</code> and not at the top level. It still checks the block's contents under <code>bazaar_extension</code>, so you also learn whether anything else is wrong with it.")}
+
+<h2 id="description">5. The description is too long</h2>
 <h3>Symptom</h3>
 <p>Everything else is right, but payments fail. Coinbase's docs say CDP's facilitator rejects verify and settle requests whose description is over 500 characters, and sellers have reported the failure being hard to trace (see <a href="https://github.com/x402-foundation/x402/issues/2993">x402 #2993</a>).</p>
 <h3>Fix</h3>
 <p>Keep the route's <code>description</code> to 500 characters or fewer. One or two sentences is plenty: what the endpoint does and when an agent should call it.</p>
 {_check_box("description_length", "the Check measures your description against the limit.")}
 
-<h2 id="http-resource">5. <code>resource.url</code> says <code>http://</code> behind a proxy</h2>
+<h2 id="http-resource">6. <code>resource.url</code> says <code>http://</code> behind a proxy</h2>
 <h3>Symptom</h3>
 <p>Your public URL is <code>https://</code>, but the decoded challenge advertises <code>http://</code>. Your host terminates TLS and forwards plain HTTP to your app, so the app builds the URL from what it sees. CDP's validation only accepts <code>https://</code> resource URLs.</p>
 <h3>Fix</h3>
@@ -186,28 +199,28 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>For other stacks, read <code>X-Forwarded-Proto</code> (Express: <code>app.set("trust proxy", true)</code>), or hardcode your public https base URL.</p>
 {_check_box("scheme_mismatch", "the Check compares the scheme your challenge advertises with the one it was served over.")}
 
-<h2 id="resource-missing">6. The <code>resource</code> field is missing</h2>
+<h2 id="resource-missing">7. The <code>resource</code> field is missing</h2>
 <h3>Symptom</h3>
 <p>The challenge has payment options but no <code>resource</code>, so the Bazaar doesn't know which URL it's cataloging.</p>
 <h3>Fix</h3>
 <p>Include <code>resource.url</code>: the full public https URL of the paid route. Current x402 SDKs fill it in for you. Hand-rolled 402 responses often leave it out.</p>
 {_check_box("resource_present", "the Check confirms the field is there and shows the URL it found.")}
 
-<h2 id="empty-body">7. The 402 body is empty or <code>accepts</code> is malformed</h2>
+<h2 id="empty-body">8. The 402 body is empty or <code>accepts</code> is malformed</h2>
 <h3>Symptom</h3>
 <p>x402 v2 puts the challenge in a base64 <code>PAYMENT-REQUIRED</code> header, and some servers send <code>{{}}</code> as the body. Clients and crawlers that read the body find no payment options.</p>
 <h3>Fix</h3>
 <p>Keep the header, and also return the same decoded JSON as the 402 body. Make sure <code>accepts</code> is a non-empty array of objects, each with <code>scheme</code>, <code>network</code>, <code>asset</code>, <code>amount</code> and <code>payTo</code>.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the Check reads the header first and falls back to the body. If it can't find a usable challenge in either, the report says so in <code>parse_error</code>.</div>
 
-<h2 id="post-as-get">8. A POST route is described as GET</h2>
+<h2 id="post-as-get">9. A POST route is described as GET</h2>
 <h3>Symptom</h3>
 <p>Your route takes a JSON body, but the listing (or the validation) treats it as GET, so it sends no body and gets an error instead of a 402.</p>
 <h3>Fix</h3>
 <p>Declare the body in the discovery metadata. In the Python SDK, pass <code>body_type="json"</code> plus an example <code>input</code> and <code>input_schema</code> to <code>declare_discovery_extension</code>. Make sure the route key says <code>POST</code> too.</p>
 <div class="card check"><b>Check it with Unlisted:</b> send <code>"method": "POST"</code> and a sample <code>"body"</code>. Unlisted probes, pays and asks CDP using the route's real method.</div>
 
-<h2 id="schema-refs">9. External <code>$ref</code>/<code>$id</code> in a schema, or <code>paymentPayload.resource</code> not sent</h2>
+<h2 id="schema-refs">10. External <code>$ref</code>/<code>$id</code> in a schema, or <code>paymentPayload.resource</code> not sent</h2>
 <h3>Symptom</h3>
 <p>Payments settle through CDP and CDP's validation says the route would be accepted, but it never appears in the catalog. Sellers in <a href="https://github.com/x402-foundation/x402/issues/3045">x402 #3045</a> traced this to two things on their side.</p>
 <h3>Fix</h3>
@@ -215,35 +228,36 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p><b>Send <code>paymentPayload.resource</code> when you settle.</b> Coinbase's docs say the settlement that triggers indexing must set both <code>paymentPayload.extensions.bazaar</code> and <code>paymentPayload.resource</code>, and a maintainer said in x402 #3045 that settlement succeeds without them. Current SDKs fill it in. Hand-rolled settle code often doesn't. One seller found that adding it alone wasn't enough: they also had to settle with an x402 v2 payload, where <code>resource</code> is an object rather than a URL string.</p>
 {_check_box("schema_external_refs", f"the Check scans your Bazaar declaration (<code>info</code> and <code>schema</code>, input and output) for <code>$ref</code> and <code>$id</code> values that aren't local <code>#/...</code> references, and lists the exact JSON path of each one it finds. It can't see what your server sends CDP when it settles, so it doesn't cover <code>paymentPayload.resource</code>. After you fix either one, the {paid_price} Check + real payment (<code>?mode=paid</code>) makes the fresh settlement you need.")}
 
-<h2 id="wildcard">10. The route uses a bare wildcard</h2>
+<h2 id="wildcard">11. The route uses a bare wildcard</h2>
 <h3>Symptom</h3>
 <p>The route is declared as <code>/prices/*</code>, so the listing can't tell agents what goes in the path.</p>
 <h3>Fix</h3>
 <p>Use a named parameter in the paywall's route pattern, such as <code>GET /prices/:symbol</code>, so the discovery metadata names the path parameter. With the CDP SDK's TypeScript <code>createX402Server</code>, the route key also needs a specific HTTP method: Coinbase's docs say a wildcard method doesn't give the SDK enough to generate discovery metadata.</p>
 {_check_box("route_template", "when your challenge includes <code>routeTemplate</code>, the Check flags a bare <code>*</code> segment.")}
 
-<h2 id="stale">11. You changed price or metadata and the listing didn't update</h2>
+<h2 id="stale">12. You changed price or metadata and the listing didn't update</h2>
 <h3>Symptom</h3>
 <p>The route is listed, but with an old price, description or schema (see <a href="https://github.com/coinbase/cdp-sdk/issues/813">cdp-sdk #813</a>).</p>
 <h3>Fix</h3>
 <p>The Bazaar refreshes a route when it re-crawls it, so a change can take a while to show up. Make a new paid call after the change: a Coinbase contributor said in {_CDP_835} that indexing can't be retriggered on an existing settlement. Then check the crawl time again before assuming it's stuck. Ranking is separate: Coinbase's docs say it's recomputed every six hours.</p>
 <div class="card check"><b>Check it with Unlisted:</b> when your route is indexed, the <code>bazaar_index_status</code> result includes when CDP last crawled it, plus 30-day calls and unique payers.</div>
 
-<h2 id="probe-rejected">12. CDP's probe gets an error instead of a 402</h2>
+<h2 id="probe-rejected">13. A bare request or CDP's probe gets a 400 instead of a 402</h2>
 <h3>Symptom</h3>
-<p>A payment settled through CDP and the facilitator said <code>processing</code>, but the route never shows up. After a settlement, the Bazaar probes your route with the example input from <code>extensions.bazaar.info.input</code>, or an empty body if you didn't declare one. If your input validation runs before the x402 middleware, the probe gets a 400, 409 or 422 instead of a 402, and indexing stops there. A Coinbase contributor traced a stuck route to exactly this in {_CDP_830}: the probe got a 409.</p>
+<p>A plain request to your route, without its parameters or body, gets a 400, 409 or 422 instead of a 402. Crawlers, discovery tools and agents checking a route before they pay send exactly that kind of request, so they never see your price.</p>
+<p>The same thing can stop indexing. A payment settled through CDP and the facilitator said <code>processing</code>, but the route never shows up. After a settlement, the Bazaar probes your route with the example input from <code>extensions.bazaar.info.input</code>, or an empty body if you didn't declare one. If your input validation runs before the x402 middleware, the probe gets a 400, 409 or 422 instead of a 402, and indexing stops there. A Coinbase contributor traced a stuck route to exactly this in {_CDP_830}: the probe got a 409.</p>
 <h3>Fix</h3>
-<p>Make sure the example input in your declaration passes your route's own validation and comes back as a 402 with the payment requirements in the <code>PAYMENT-REQUIRED</code> header. Or let the x402 middleware answer before validation runs. Then make a new settlement.</p>
-{_check_box("probe_response", "the Check rebuilds CDP's probe from your declaration (its method, path and query params, and example body), sends it to your route unpaid, and fails if anything but a 402 comes back, naming the status it got. It skips when the declaration has no example input to send.")}
+<p>Let the x402 middleware answer before your input validation runs, so an unpaid request gets a 402 with the payment requirements in the <code>PAYMENT-REQUIRED</code> header whatever its input. If validation has to come first, at least make sure the example input in your declaration passes it and comes back as a 402. Then make a new settlement.</p>
+{_check_box("probe_response", "the Check rebuilds CDP's probe from your declaration (its method, path and query params, and example body), sends it to your route unpaid, and fails if anything but a 402 comes back, naming the status it got. It skips when the declaration has no example input to send. If the URL you submit gets a 400, 409 or 422 itself, the report has no checks, and its verdict says validation is most likely running before the paywall. Submit the URL with its required parameters, or use the <code>method</code> and <code>body</code> fields for a POST route, to check the rest.")}
 
-<h2 id="collapsed">13. Several URLs collapse into one entry</h2>
+<h2 id="collapsed">14. Several URLs collapse into one entry</h2>
 <h3>Symptom</h3>
 <p>You serve many resources, such as <code>/data/0xabc&hellip;/report</code> and <code>/data/0x123&hellip;/report</code>, but the Bazaar lists them as a single entry.</p>
 <h3>Fix</h3>
 <p>Coinbase's docs say the Bazaar turns any path segment that is entirely a UUID, an EVM address or transaction hash, or a Solana address or transaction hash into a generic route parameter. To keep resources listed separately, add a prefix or suffix so the segment isn't a bare identifier, such as <code>/user-&lt;uuid&gt;</code> instead of <code>/&lt;uuid&gt;</code>.</p>
 <div class="card check"><b>Check it with Unlisted:</b> Unlisted doesn't check this. Look up your payTo in the discovery API above to see how your routes were grouped.</div>
 
-<h2 id="dropped">14. The route dropped out after 30 days without a settlement</h2>
+<h2 id="dropped">15. The route dropped out after 30 days without a settlement</h2>
 <h3>Symptom</h3>
 <p>Your route was listed, and now it's gone from the catalog and search results.</p>
 <h3>Fix</h3>
@@ -255,9 +269,9 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Your challenge is valid, a payment settled through CDP's facilitator, and the facilitator answered with <code>bazaar.status: "processing"</code>. CDP's own validation says the route would be accepted. Days later it still isn't in the catalog.</p>
 <h3>What's known</h3>
 <p>Coinbase's docs say <code>processing</code> means the metadata was accepted and is being cataloged asynchronously, and that it doesn't confirm indexing will succeed. Routes that do get indexed see it too, so it tells you nothing either way.</p>
-<p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 12) and {_CDP_835} (an external <code>$id</code> in the schema, cause 9). As of {GUIDE_UPDATED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
+<p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 13) and {_CDP_835} (an external <code>$id</code> in the schema, cause 10). As of {GUIDE_UPDATED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
 <h3>What to try</h3>
-<p>Rule out causes 1 to 14 first, especially 12 and 9, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
+<p>Rule out causes 1 to 15 first, especially 13 and 10, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
 
 <h2 id="not-curated">Indexed, but not curated (<code>enriched: false</code>)</h2>
@@ -305,7 +319,7 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 
 - Check: {price} per call. Reads the target's 402 challenge and Bazaar declaration, and asks CDP for its live index status.
 - Check + real payment: {paid_price} per call, selected with ?mode=paid on the request URL. Also makes one real test payment to the target. Only for targets priced up to $0.05, and once per target domain per 24 hours.
-- You are only charged when the check completes (HTTP 200). 4xx and 5xx responses are not charged.
+- You are only charged when the check completes (HTTP 200). 4xx and 5xx responses are not charged. A target that answers with something other than a 402 still gets a completed report (HTTP 200), so that call is charged.
 
 ## What you get back
 
@@ -315,7 +329,9 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - checks: a list of results, each with check_id, status ("pass", "fail", "warn" or "skip"), detail and, for failures, a fix.
 - verdict: a one-line summary.
 - schema_external_refs: fails with the JSON path of every external $ref/$id in the target's Bazaar declaration (info and schema, input and output). CDP's indexer rejects them. Inline the schema to fix it.
+- extensions_placement: fails when the Bazaar block is inside accepts[0] instead of at the top level of the 402 body next to accepts, where the x402 v2 spec puts it. bazaar_extension still checks the block's contents.
 - probe_response: sends the declaration's example input (method, path or query params, example body) to the target unpaid, as CDP's indexer does after a settlement, and fails if the answer isn't a 402, which means validation runs before the paywall. Skipped when there's no usable example.
+- When the target answers with something other than a 402, checks is empty and the verdict names the likely cause: for 400, 409 or 422, input validation running before the paywall (submit the URL with its required parameters, or use method and body); for 401/403, other auth in front of the paywall; for 404, a wrong path; for 405, the other method; for 5xx, a server error.
 
 ## Limits
 

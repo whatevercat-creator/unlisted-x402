@@ -1,5 +1,5 @@
 """
-schema_external_refs (guide cause 9) and probe_response (guide cause 12):
+schema_external_refs (guide cause 10) and probe_response (guide cause 13):
 the two causes Coinbase contributors confirmed in cdp-sdk #835 and #830.
 """
 

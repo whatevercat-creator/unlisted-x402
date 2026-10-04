@@ -211,12 +211,29 @@ def _resource_url(resource: Any) -> Optional[str]:
 
 def _extensions_value(challenge: dict[str, Any], accepts: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     """`extensions` lives at the challenge level in the confirmed real
-    shape; fall back to the first accepts[] entry otherwise."""
+    shape; fall back to the first accepts[] entry otherwise, so a misplaced
+    Bazaar block still gets its contents checked (extensions_placement
+    reports the placement itself)."""
+    if _bazaar_location(challenge, accepts) == "accepts[0]":
+        return accepts[0]["extensions"]
     extensions = challenge.get("extensions")
     if isinstance(extensions, dict):
         return extensions
     if accepts and isinstance(accepts[0].get("extensions"), dict):
         return accepts[0]["extensions"]
+    return None
+
+
+def _bazaar_location(challenge: dict[str, Any], accepts: list[dict[str, Any]]) -> Optional[str]:
+    """Where `extensions.bazaar` was found: "top" (next to `accepts`),
+    "accepts[0]", or None. Top level wins when both have one."""
+    top = challenge.get("extensions")
+    if isinstance(top, dict) and "bazaar" in top:
+        return "top"
+    if accepts and accepts[0] is not challenge:
+        nested = accepts[0].get("extensions")
+        if isinstance(nested, dict) and "bazaar" in nested:
+            return "accepts[0]"
     return None
 
 
@@ -390,10 +407,61 @@ def check_bazaar_extension(
                 confidence=Confidence.SERVER,
             )
 
+    where = (
+        " but sits inside accepts[0] (see extensions_placement)"
+        if _bazaar_location(challenge, accepts) == "accepts[0]"
+        else ""
+    )
     return CheckResult(
         check_id="bazaar_extension",
         status=Status.PASS,
-        detail=f"`extensions.bazaar` is well-formed (input.type={input_type!r})",
+        detail=f"`extensions.bazaar` is well-formed (input.type={input_type!r}){where}",
+        confidence=Confidence.SERVER,
+    )
+
+
+def check_extensions_placement(
+    challenge: dict[str, Any], accepts: list[dict[str, Any]]
+) -> CheckResult:
+    """Is `extensions` at the top level of the 402 body, next to `accepts`?
+
+    The x402 v2 spec (x402-specification-v2.md section 5.1) defines
+    `extensions` on PaymentRequired only; a PaymentRequirements entry in
+    `accepts` has no such field. Clients echo PaymentRequired.extensions
+    into the PaymentPayload, and the SDK's PaymentRequirements model drops
+    an `extensions` key when it parses an accepts[] entry, so a block placed
+    there never reaches CDP's facilitator. bazaar_extension still checks the
+    nested block's contents.
+    """
+    location = _bazaar_location(challenge, accepts)
+    if location == "top":
+        return CheckResult(
+            check_id="extensions_placement",
+            status=Status.PASS,
+            detail="`extensions` is at the top level of the 402 body, next to `accepts`",
+            confidence=Confidence.SERVER,
+        )
+    if location is None:
+        return CheckResult(
+            check_id="extensions_placement",
+            status=Status.SKIP,
+            detail="No `extensions.bazaar` block found (see bazaar_extension check)",
+        )
+    return CheckResult(
+        check_id="extensions_placement",
+        status=Status.FAIL,
+        detail=(
+            "`extensions.bazaar` is inside accepts[0], not at the top level of the "
+            "402 body. The x402 v2 spec defines `extensions` only next to `accepts`; "
+            "x402 clients copy it from there into the payment they send, and the x402 "
+            "SDK drops an `extensions` key inside an accepts[] entry, so a payment "
+            "made with an x402 client carries no Bazaar declaration to CDP's facilitator."
+        ),
+        fix=(
+            "Move `extensions` out of accepts[0] to the top level of the 402 body, "
+            "next to `accepts` (and in the decoded PAYMENT-REQUIRED header). Then make "
+            "a new settlement through CDP."
+        ),
         confidence=Confidence.SERVER,
     )
 
@@ -585,6 +653,7 @@ def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
         check_resource_present(challenge, accepts),
         check_scheme_mismatch(challenge, accepts, final_url),
         check_bazaar_extension(challenge, accepts),
+        check_extensions_placement(challenge, accepts),
         check_description_length(challenge, accepts),
         check_route_template(challenge, accepts),
         _guarded("schema_external_refs", check_schema_external_refs, challenge, accepts),
@@ -603,6 +672,58 @@ def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
         )
 
     return results
+
+
+# Statuses that mean input validation answered before the paywall.
+VALIDATION_STATUSES = (400, 409, 422)
+
+
+def non_402_verdict(status: int, *, method: str = "GET", mode: str = "dry", allow: Optional[str] = None) -> str:
+    """Verdict for a submitted URL that answered with something other than
+    a 402, naming the most likely cause for the common statuses. `allow`
+    is the target's Allow header, quoted back on a 405."""
+    verdict = f"Expected HTTP 402, got {status}."
+    if status in VALIDATION_STATUSES:
+        verdict += (
+            " Input validation is most likely running before the paywall, so "
+            "crawlers, agents and CDP's probe get this error and never see the price. "
+            "To check the challenge, submit the URL with its required parameters "
+            "(path or query), or for a POST route set `method` to POST and send an "
+            "example `body`. Then fix the route so the x402 middleware answers an "
+            "unpaid request with a 402 before validation runs."
+        )
+    elif status in (401, 403):
+        verdict += (
+            " The route asks for some other authentication (an API key, a login or "
+            "an IP allowlist) before the paywall, so x402 clients and CDP's probe "
+            "never get a 402. Put the x402 middleware in front of that check, so an "
+            "unpaid request needs nothing but the payment."
+        )
+    elif status == 404:
+        verdict += (
+            f" Nothing is served at this URL for {method}. Check the path, including "
+            "any path parameters, and that the paid route is deployed."
+        )
+    elif status == 405:
+        other = "POST" if method == "GET" else "GET"
+        verdict += f" The route doesn't accept {method}"
+        verdict += f" (its Allow header says: {allow})." if allow else "."
+        verdict += f" Submit it again with `method` set to {other}"
+        verdict += " and an example `body` if the route needs one." if other == "POST" else "."
+    elif 500 <= status <= 599:
+        verdict += (
+            " The server errored before it could answer with a 402, so nobody can see "
+            "the price or pay. Check its logs. Missing input can cause this too, so also "
+            "try the URL with its required parameters."
+        )
+    elif status == 200:
+        verdict += " This endpoint may not require payment at all, or may not be an x402 seller."
+    elif mode == "dry":
+        verdict += " Can't run the payment-requirement checks without a 402 challenge to inspect."
+
+    if mode == "paid":
+        verdict += " No test payment was made: there's no 402 challenge to pay against."
+    return verdict
 
 
 def summarize(checks: list[CheckResult]) -> str:
@@ -631,7 +752,7 @@ def summarize(checks: list[CheckResult]) -> str:
         )
         sentence = (
             f"No issues found in the {schema_check_count} schema/config check(s) "
-            "(resource, scheme match, bazaar extension, description length, "
+            "(resource, scheme match, bazaar extension and its placement, description length, "
             "external schema refs, and route template and example-input probe "
             "when reported)."
         )

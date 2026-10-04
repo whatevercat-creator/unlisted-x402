@@ -25,6 +25,7 @@ from diagnosis import (
     DiagnosisReport,
     Status,
     decode_challenge,
+    non_402_verdict,
     run_checks,
     summarize,
 )
@@ -54,15 +55,8 @@ async def run_dry_check(
             mode="dry",
             http_status=response.status_code,
             checks=[],
-            verdict=(
-                f"Expected HTTP 402, got {response.status_code}. "
-                + (
-                    "This endpoint may not require payment at all, or may not be "
-                    "an x402 seller."
-                    if response.status_code == 200
-                    else "Can't run the payment-requirement checks without a 402 "
-                    "challenge to inspect."
-                )
+            verdict=non_402_verdict(
+                response.status_code, method=method, mode="dry", allow=response.headers.get("allow")
             ),
         )
 

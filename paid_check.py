@@ -57,6 +57,7 @@ from diagnosis import (
     Status,
     decode_challenge,
     extract_accepts,
+    non_402_verdict,
     run_checks,
     summarize,
 )
@@ -108,9 +109,8 @@ async def run_paid_check(
             mode="paid",
             http_status=response.status_code,
             checks=[],
-            verdict=(
-                f"Expected HTTP 402, got {response.status_code}. Nothing to "
-                "real-payment-test without a 402 challenge to pay against."
+            verdict=non_402_verdict(
+                response.status_code, method=method, mode="paid", allow=response.headers.get("allow")
             ),
         )
 
