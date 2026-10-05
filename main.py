@@ -250,6 +250,9 @@ def _caller_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+X402LIST_VERIFICATION_TOKEN = "x402list-verify-pMBFj4b9NkhnbaO6xHK3i4JnTpM044Nkr3C7xutfqP8"
+
+
 def create_app(
     *,
     facilitator_client: Any = None,
@@ -612,6 +615,16 @@ def create_app(
     @fastapi_app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
     async def robots() -> PlainTextResponse:
         return PlainTextResponse(guide.ROBOTS_TXT)
+
+    @fastapi_app.api_route(
+        "/.well-known/x402list.txt",
+        methods=["GET", "HEAD"],
+        response_class=PlainTextResponse,
+        include_in_schema=False,
+    )
+    async def x402list_verification() -> PlainTextResponse:
+        # Domain-ownership token for x402-list.com.
+        return PlainTextResponse(X402LIST_VERIFICATION_TOKEN + "\n")
 
     @fastapi_app.get("/sitemap.xml", include_in_schema=False)
     async def sitemap() -> Response:

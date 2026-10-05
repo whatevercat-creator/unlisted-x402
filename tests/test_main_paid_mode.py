@@ -495,3 +495,15 @@ def test_paid_prefers_the_eip3009_option_over_a_listed_permit2_one():
     assert "permit2Authorization" not in signed["payload"]
     assert signed["accepted"]["extra"].get("assetTransferMethod") is None
     assert len(inbound.settle_calls) == 1
+
+
+def test_x402list_verification_file_is_free_plain_text():
+    app = main.create_app(facilitator_client=FakeFacilitatorClient(), pay_to=PAY_TO)
+    client = TestClient(app)
+    resp = client.get("/.well-known/x402list.txt")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    assert resp.text == "x402list-verify-pMBFj4b9NkhnbaO6xHK3i4JnTpM044Nkr3C7xutfqP8\n"
+    head = client.head("/.well-known/x402list.txt")
+    assert head.status_code == 200
+    assert head.headers["content-type"].startswith("text/plain")
