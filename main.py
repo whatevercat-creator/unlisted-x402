@@ -146,6 +146,74 @@ class DiagnoseRequest(BaseModel):
         return self
 
 
+# OpenAPI examples for POST /diagnose. The report is real output, not
+# hand-written: the dry /diagnose handler run (no paywall) on the request below,
+# against the 402 captured from crypto-sentiment-x402 in
+# tests/test_real_payload.py, with tests/test_curated.py's FakeCdp() as the
+# Bazaar client, and checks[] trimmed from 9 to 5.
+_DIAGNOSE_EXAMPLE_REQUEST: dict[str, Any] = {
+    "url": "https://crypto-sentiment-x402.onrender.com/sentiment/BTC",
+    "method": "GET",
+}
+_DIAGNOSE_EXAMPLE_REPORT: dict[str, Any] = {
+    "bazaar": {
+        "indexed": True,
+        "status": "indexed",
+        "curated": None,
+        "detail": "Currently indexed in the CDP Bazaar catalog. Last crawled 2026-10-01T00:00:00Z.",
+    },
+    "url": "https://crypto-sentiment-x402.onrender.com/sentiment/BTC",
+    "mode": "dry",
+    "http_status": 402,
+    "checks": [
+        {
+            "check_id": "resource_present",
+            "status": "pass",
+            "detail": "`resource` present: https://crypto-sentiment-x402.onrender.com/sentiment/BTC",
+            "fix": None,
+            "confidence": "server-side",
+        },
+        {
+            "check_id": "extensions_placement",
+            "status": "pass",
+            "detail": "`extensions` is at the top level of the 402 body, next to `accepts`",
+            "fix": None,
+            "confidence": "server-side",
+        },
+        {
+            "check_id": "schema_external_refs",
+            "status": "pass",
+            "detail": "No external $ref/$id references in the Bazaar declaration",
+            "fix": None,
+            "confidence": "server-side",
+        },
+        {
+            "check_id": "probe_response",
+            "status": "pass",
+            "detail": "CDP-style probe (GET https://crypto-sentiment-x402.onrender.com/sentiment/BTC"
+            "?method=GET&symbol=BTC) got HTTP 402",
+            "fix": None,
+            "confidence": "server-side",
+        },
+        {
+            "check_id": "bazaar_index_status",
+            "status": "pass",
+            "detail": "Currently indexed in the CDP Bazaar catalog. Last crawled 2026-10-01T00:00:00Z.",
+            "fix": None,
+            "confidence": "facilitator-side",
+        },
+    ],
+    "verdict": "No issues found in the 8 schema/config check(s) (resource, scheme match, bazaar "
+    "extension and its placement, description length, external schema refs, and route template "
+    "and example-input probe when reported). This doesn't guarantee a Bazaar listing -- "
+    "settlement must still succeed and actually echo the extension, and the "
+    "eviction/EXTENSION-RESPONSES checks aren't covered by a dry check. Confirmed currently "
+    "indexed in the CDP Bazaar catalog.",
+    "parse_error": None,
+    "method": "GET",
+}
+
+
 class Mirror402ChallengeMiddleware(BaseHTTPMiddleware):
     """PaymentMiddlewareASGI returns {} as the 402 body and puts the whole
     challenge only in the base64 PAYMENT-REQUIRED header. Many x402 clients
@@ -372,6 +440,13 @@ def create_app(
             "?mode=paid, which also makes one real test payment to the target. "
             "Free guide: https://unlisted.sh/guide"
         )
+        # Set after serialization: FastAPI drops None values from the spec,
+        # which would strip the report's nulls (fix, indexed, parse_error...).
+        op = schema["paths"]["/diagnose"]["post"]
+        op["requestBody"]["content"]["application/json"]["example"] = _DIAGNOSE_EXAMPLE_REQUEST
+        op["responses"]["200"].setdefault("content", {}).setdefault("application/json", {})[
+            "example"
+        ] = _DIAGNOSE_EXAMPLE_REPORT
         return schema
 
     fastapi_app.openapi = _openapi_with_guidance  # type: ignore[method-assign]
@@ -396,6 +471,12 @@ def create_app(
         ),
         openapi_extra=diagnose_openapi,
         responses={
+            # Examples are added in _openapi_with_guidance.
+            200: {
+                "description": "The diagnosis report. The example is a sample report (a dry "
+                "check of a real seller's captured 402, with a mocked CDP index lookup and "
+                "checks trimmed from 9 to 5), not a live result."
+            },
             402: {
                 "description": "Payment required. The requirements are in the "
                 "PAYMENT-REQUIRED header and mirrored in the JSON body."
