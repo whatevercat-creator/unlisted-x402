@@ -658,7 +658,9 @@ def create_app(
             status_code=500, content={"detail": "Internal error diagnosing this URL."}
         )
 
-    @fastapi_app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @fastapi_app.api_route(
+        "/", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False
+    )
     async def home() -> HTMLResponse:
         return HTMLResponse(_home_page(price=price, paid_price=paid_price))
 
@@ -714,6 +716,10 @@ def create_app(
     @fastapi_app.get("/healthz", openapi_extra=_public_op)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    # Uptime monitors often send HEAD. Registered separately so the OpenAPI
+    # schema keeps a single GET operation for /healthz.
+    fastapi_app.add_api_route("/healthz", healthz, methods=["HEAD"], include_in_schema=False)
 
     if facilitator_client is not None and pay_to:
         resource_server = payment.build_resource_server(facilitator_client)

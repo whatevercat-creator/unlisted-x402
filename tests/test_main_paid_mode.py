@@ -507,3 +507,22 @@ def test_x402list_verification_file_is_free_plain_text():
     head = client.head("/.well-known/x402list.txt")
     assert head.status_code == 200
     assert head.headers["content-type"].startswith("text/plain")
+
+
+@pytest.mark.parametrize("path", ["/", "/healthz"])
+def test_head_matches_get_without_body_and_is_free(path):
+    app = main.create_app(facilitator_client=FakeFacilitatorClient(), pay_to=PAY_TO)
+    client = TestClient(app)
+    get = client.get(path)
+    head = client.head(path)
+    assert get.status_code == 200
+    assert head.status_code == 200
+    assert head.content == b""
+    assert "payment-required" not in head.headers
+    assert head.headers["content-type"] == get.headers["content-type"]
+    assert head.headers["content-length"] == get.headers["content-length"]
+
+
+def test_healthz_openapi_lists_only_get():
+    app = main.create_app(facilitator_client=FakeFacilitatorClient(), pay_to=PAY_TO)
+    assert set(app.openapi()["paths"]["/healthz"]) == {"get"}
