@@ -282,7 +282,7 @@ def test_run_checks_all_pass_summary():
     challenge = _good_challenge()
     results = run_checks(challenge, final_url="https://api.example.com/data")
     non_informational = [r for r in results if r.check_id != "multiple_accepts_noted"]
-    assert all(r.status in (Status.PASS, Status.SKIP) for r in non_informational)
+    assert all(r.status in (Status.PASS, Status.SKIP, Status.INFO) for r in non_informational)
     summary = summarize(results)
     assert "No issues found" in summary
 

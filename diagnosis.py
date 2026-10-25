@@ -86,6 +86,8 @@ class Status(str, Enum):
     FAIL = "fail"
     WARN = "warn"
     SKIP = "skip"
+    # Reported for the seller's information; never a problem by itself.
+    INFO = "info"
 
 
 class Confidence(str, Enum):
@@ -628,6 +630,164 @@ def check_schema_external_refs(
     )
 
 
+# Mirrors the x402 SDK's facilitator-side _sanitize_tags (x402==2.25.0,
+# extensions/bazaar/facilitator.py): entries that aren't 1-32 printable-ASCII
+# characters are dropped, duplicates are dropped case-insensitively, and only
+# the first 5 survivors are kept. The public discovery listing agrees: of
+# 59,927 entries checked on 2026-10-25, none had more than 5 tags, and 274 of
+# the 362 that also declared over 5 under extensions.bazaar.tags were listed
+# with exactly the first 5.
+MAX_TAGS = 5
+_MAX_TAG_LEN = 32
+_PRINTABLE_ASCII_RE = re.compile(r"^[\x20-\x7e]+$")
+
+
+def _resource_tags(resource: Any) -> Optional[list[Any]]:
+    """`resource.tags`, where the Bazaar's service metadata is declared."""
+    if isinstance(resource, dict) and isinstance(resource.get("tags"), list):
+        return resource["tags"]
+    return None
+
+
+def _kept_tags(tags: list[Any]) -> list[str]:
+    kept: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        if not isinstance(tag, str) or not 0 < len(tag) <= _MAX_TAG_LEN:
+            continue
+        if not _PRINTABLE_ASCII_RE.match(tag) or tag.lower() in seen:
+            continue
+        seen.add(tag.lower())
+        kept.append(tag)
+        if len(kept) == MAX_TAGS:
+            break
+    return kept
+
+
+def check_tag_count(
+    challenge: dict[str, Any], accepts: list[dict[str, Any]]
+) -> CheckResult:
+    """More than 5 tags: CDP's facilitator keeps the first 5 and silently
+    drops the rest."""
+    resource = _resource_value(challenge, accepts)
+    tags = _resource_tags(resource)
+    if tags is None:
+        extensions = _extensions_value(challenge, accepts)
+        bazaar = extensions.get("bazaar") if isinstance(extensions, dict) else None
+        if isinstance(bazaar, dict) and isinstance(bazaar.get("tags"), list):
+            return CheckResult(
+                check_id="tag_count",
+                status=Status.INFO,
+                detail=(
+                    f"{len(bazaar['tags'])} tag(s) are declared under `extensions.bazaar.tags`, "
+                    "but no `resource.tags`. The x402 SDK's facilitator code reads tags from "
+                    "`resource.tags`."
+                ),
+                fix=(
+                    f"Declare the tags as `resource.tags` too, with the most important first "
+                    f"(only the first {MAX_TAGS} are kept)."
+                ),
+                confidence=Confidence.SERVER,
+            )
+        return CheckResult(
+            check_id="tag_count",
+            status=Status.INFO,
+            detail=(
+                f"No `resource.tags` declared. Tags are optional; the Bazaar keeps up to "
+                f"{MAX_TAGS} and uses them in search."
+            ),
+            confidence=Confidence.SERVER,
+        )
+
+    if len(tags) > MAX_TAGS:
+        kept = _kept_tags(tags)
+        dropped = [t for t in tags if t not in kept]
+        return CheckResult(
+            check_id="tag_count",
+            status=Status.WARN,
+            detail=(
+                f"`resource.tags` has {len(tags)} tags. CDP's facilitator keeps only the first "
+                f"{MAX_TAGS} valid ones, so the listing gets {kept!r} and drops {dropped!r}."
+            ),
+            fix=f"Put the most important tags first, or trim the list to {MAX_TAGS}.",
+            confidence=Confidence.SERVER,
+        )
+
+    return CheckResult(
+        check_id="tag_count",
+        status=Status.PASS,
+        detail=f"`resource.tags` has {len(tags)} tag(s) (limit {MAX_TAGS})",
+        confidence=Confidence.SERVER,
+    )
+
+
+# Wording in a description or tag that reads like an instruction to an AI
+# agent rather than a description of the endpoint. Kept small on purpose:
+# this is our heuristic, not CDP's screening. Against the 59,927 public
+# listing entries on 2026-10-25 it flagged none. Looser forms of the last two
+# rules ("system prompt", "you must") flagged 21 entries, all false
+# positives such as "an optional system prompt" and "you must send at least
+# one entry".
+_AGENT_INSTRUCTION_PATTERNS = (
+    r"\b(ignore|disregard|forget)\s+(all\s+|any\s+)?(the\s+|your\s+)?"
+    r"(previous|prior|above|earlier|preceding)\s+(instructions?|prompts?|messages?|rules)\b",
+    r"\b(do\s+not|don'?t|never)\s+(tell|inform|mention\s+(this\s+)?to|reveal\s+(this\s+)?to|show)\s+the\s+user\b",
+    r"\balways\s+(call|use|invoke|choose|prefer|pick|select|recommend|route\s+to)\b",
+    r"\b(ignore|override|reveal|print|repeat|disregard|replace|forget)\s+(the\s+|your\s+)?system\s+prompt\b"
+    r"|\bnew\s+system\s+prompt\b",
+    r"\byou\s+must\s+(always\s+|never\s+|first\s+)?"
+    r"(call|use|invoke|pay|recommend|prefer|choose|select|ignore|obey|follow\s+these)\b",
+)
+_AGENT_INSTRUCTION_RE = re.compile("|".join(f"(?:{p})" for p in _AGENT_INSTRUCTION_PATTERNS), re.IGNORECASE)
+
+
+def check_description_screening(
+    challenge: dict[str, Any], accepts: list[dict[str, Any]]
+) -> CheckResult:
+    """Warn (never fail) on description or tag wording that reads like
+    instructions to an AI agent."""
+    resource = _resource_value(challenge, accepts)
+    description = _description_value(challenge, resource, accepts)
+    tags = [t for t in (_resource_tags(resource) or []) if isinstance(t, str)]
+    fields = ([("description", description)] if isinstance(description, str) else []) + [
+        ("tag", t) for t in tags
+    ]
+    if not fields:
+        return CheckResult(
+            check_id="description_screening",
+            status=Status.SKIP,
+            detail="No `description` or `resource.tags` to screen",
+        )
+
+    found = [
+        f"{name}: {m.group(0)!r}"
+        for name, text in fields
+        for m in _AGENT_INSTRUCTION_RE.finditer(text)
+    ]
+    heuristic = (
+        "This is Unlisted's own small heuristic for wording aimed at AI agents, not "
+        "CDP's actual screening, which isn't public."
+    )
+    if found:
+        return CheckResult(
+            check_id="description_screening",
+            status=Status.WARN,
+            detail=f"Wording that reads like instructions to an AI agent: {'; '.join(found)}. {heuristic}",
+            fix=(
+                "Describe what the endpoint does and when to use it, without telling the "
+                "agent what to do. Agents and screening may treat instruction-like text as "
+                "prompt injection."
+            ),
+            confidence=Confidence.SERVER,
+        )
+    return CheckResult(
+        check_id="description_screening",
+        status=Status.PASS,
+        detail=f"No instruction-like wording found in the description or tags. {heuristic}",
+        confidence=Confidence.SERVER,
+    )
+
+
 def _guarded(check_id: str, check, *args) -> CheckResult:
     """Run a check that must never take the whole diagnosis down with it."""
     try:
@@ -660,6 +820,8 @@ def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
         check_description_length(challenge, accepts),
         check_route_template(challenge, accepts),
         _guarded("schema_external_refs", check_schema_external_refs, challenge, accepts),
+        _guarded("tag_count", check_tag_count, challenge, accepts),
+        _guarded("description_screening", check_description_screening, challenge, accepts),
     ]
 
     if len(accepts) > 1:
@@ -729,6 +891,17 @@ def non_402_verdict(status: int, *, method: str = "GET", mode: str = "dry", allo
     return verdict
 
 
+# Checks that report on the payment or CDP's catalog, not the challenge.
+_NON_SCHEMA_CHECK_IDS = (
+    "settlement_echo",
+    "extension_response",
+    "bazaar_index_status",
+    "listed_price_match",
+    "search_visibility",
+    "multiple_accepts_noted",
+)
+
+
 def summarize(checks: list[CheckResult]) -> str:
     """Build the report's top-level verdict sentence.
 
@@ -750,14 +923,12 @@ def summarize(checks: list[CheckResult]) -> str:
 
     if not failures and not warnings:
         by_id = {c.check_id: c for c in checks}
-        schema_check_count = len(
-            [c for c in checks if c.check_id not in ("settlement_echo", "bazaar_index_status", "multiple_accepts_noted")]
-        )
+        schema_check_count = len([c for c in checks if c.check_id not in _NON_SCHEMA_CHECK_IDS])
         sentence = (
             f"No issues found in the {schema_check_count} schema/config check(s) "
             "(resource, scheme match, bazaar extension and its placement, description length, "
-            "external schema refs, and route template and example-input probe "
-            "when reported)."
+            "external schema refs, tag count, description wording, and route template and "
+            "example-input probe when reported)."
         )
 
         settlement = by_id.get("settlement_echo")

@@ -35,6 +35,11 @@ REFERENCED_CHECK_IDS = (
     "route_template",
     "schema_external_refs",
     "probe_response",
+    "tag_count",
+    "description_screening",
+    "listed_price_match",
+    "extension_response",
+    "search_visibility",
 )
 
 _STYLE = """
@@ -125,7 +130,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#collapsed">Several URLs collapse into one entry</a></li>
 <li><a href="#dropped">The route dropped out after 30 days without a settlement</a></li>
 </ol>
-<p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>. Listed but not featured? See <a href="#not-curated">indexed, but not curated (<code>enriched: false</code>)</a>.</p></div>
+<p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>. Listed but not featured? See <a href="#not-curated">indexed, but not curated (<code>enriched: false</code>)</a>. Listed but hard to find? See <a href="#listing-behavior">how a listing behaves</a>.</p></div>
 
 <h2>x402 endpoint not showing in Bazaar: quick triage</h2>
 <div class="scroll"><table>
@@ -239,8 +244,8 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <h3>Symptom</h3>
 <p>The route is listed, but with an old price, description or schema (see <a href="https://github.com/coinbase/cdp-sdk/issues/813">cdp-sdk #813</a>).</p>
 <h3>Fix</h3>
-<p>The Bazaar refreshes a route when it re-crawls it, so a change can take a while to show up. Make a new paid call after the change: a Coinbase contributor said in {_CDP_835} that indexing can't be retriggered on an existing settlement. Then check the crawl time again before assuming it's stuck. Ranking is separate: Coinbase's docs say it's recomputed every six hours.</p>
-<div class="card check"><b>Check it with Unlisted:</b> when your route is indexed, the <code>bazaar_index_status</code> result includes when CDP last crawled it, plus 30-day calls and unique payers.</div>
+<p>The Bazaar takes a route's description, tags and price from a settlement through CDP, so a change shows up only after a new payment settles, and can take a while after that. Make a new paid call after the change: a Coinbase contributor said in {_CDP_835} that indexing can't be retriggered on an existing settlement. Then check the crawl time again before assuming it's stuck. Ranking is separate: Coinbase's docs say it's recomputed every six hours.</p>
+<div class="card check"><b>Check it with Unlisted:</b> when your route is indexed, the <code>bazaar_index_status</code> result includes when CDP last crawled it, plus 30-day calls and unique payers, and <code>listed_price_match</code> compares the listed price and payment details with your live 402.</div>
 
 <h2 id="probe-rejected">13. A bare request or CDP's probe gets a 400 instead of a 402</h2>
 <h3>Symptom</h3>
@@ -281,6 +286,15 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>A Coinbase contributor explained in #838 that <code>enriched</code> is only turned on for the hand-picked editorial set of curated endpoints. Meeting the published criteria makes an endpoint eligible to be selected, not entitled to it: selection is at Coinbase's discretion, based on service quality, category coverage and ecosystem fit.</p>
 <p><a href="{OFFICIAL_CHECKLIST_URL}#requirements-for-curation">Coinbase's curation requirements</a> are: live x402 payments on mainnet, at least 99% availability over 30 days (above 99.5% gets priority), passing the platform health probe, agent-ready metadata (a complete input schema, a description that tells an agent when to use the endpoint, per-call pricing, supported networks and documented error responses), and passing validation. Curated endpoints that fail consecutive health probes are down-ranked, then dropped from the featured tier, and restored once they recover. The docs don't describe an application process.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the {price} Check's report includes <code>bazaar.curated</code>, read from CDP's discovery API (the payTo lookup above), which marks curated resources with <code>curated: true</code> and leaves the field out otherwise. It's <code>true</code> or <code>false</code>, or <code>null</code> when Unlisted couldn't tell: the lookup failed, or your route couldn't be matched in the listing. Unlisted doesn't read agentic.market's <code>enriched</code> field, and it can't get a route curated.</div>
+
+<h2 id="listing-behavior">How a listing behaves once you're in</h2>
+<ul>
+<li><b>Only the first 5 tags count.</b> CDP's facilitator keeps the first 5 valid entries of <code>resource.tags</code> (1 to 32 printable ASCII characters, no case-insensitive duplicates) and silently drops the rest. Of the 59,927 entries in CDP's public discovery listing on October 25, 2026, none had more than 5 tags. Put your most important tags first.</li>
+<li><b>Description and tags refresh only when a payment settles.</b> Changing them in your 402 doesn't update the listing by itself. The Bazaar takes your metadata from a settlement through CDP's facilitator, so make a new paid call after a change: a Coinbase contributor said in {_CDP_835} that indexing can't be retriggered on an existing settlement.</li>
+<li><b><code>lastCalledAt</code> and call counts have been observed by sellers to lag by hours.</b> Coinbase doesn't document this, but a payment that just settled may not show up in the listing's <code>quality</code> numbers yet.</li>
+<li><b>Indexed doesn't mean found in search.</b> Being in the catalog doesn't put you near the top of Bazaar search. Ranking is CDP's, and a description that says what the endpoint does, in the words a buyer would search for, helps.</li>
+</ul>
+<div class="card check"><b>Check it with Unlisted:</b> <code>tag_count</code> warns when you declare more than 5 tags and names the ones that would be dropped. <code>listed_price_match</code> compares your live 402 with your listing and warns when the live price is more than twice the listed one or the payTo, network or asset differ. <code>search_visibility</code> runs Bazaar search for up to 3 phrases from your own description and tags and reports your rank, or &ldquo;not in top 20&rdquo;. It's information only. <code>description_screening</code> warns on wording that reads like instructions to an AI agent, such as &ldquo;ignore previous instructions&rdquo;. It's a small heuristic of Unlisted's own, not CDP's screening. In paid mode, <code>extension_response</code> reports whether your server passed CDP's <code>EXTENSION-RESPONSES</code> header on to the buyer, and its <code>bazaar</code> status. Most servers don't, and that's normal. Unlisted can't make CDP index or rank a route, and it won't claim to.</div>
 
 <h2>Check all of it in one call</h2>
 <p>Unlisted runs every check above against your endpoint and asks CDP for its live index status. No signup and no API key: you pay per call in USDC on Base through x402, and you're only charged if the check completes.</p>
@@ -330,11 +344,16 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - bazaar.indexed: true, false, or null if CDP could not be reached.
 - bazaar.status: "indexed", "not_indexed_would_be_accepted", "not_indexed" or "unknown".
 - bazaar.curated: true if CDP's discovery listing marks the route as Coinbase-curated, false if not, or null if unknown (lookup failed or the route couldn't be matched).
-- checks: a list of results, each with check_id, status ("pass", "fail", "warn" or "skip"), detail and, for failures, a fix.
+- checks: a list of results, each with check_id, status ("pass", "fail", "warn", "info" or "skip"), detail and, for failures, a fix. "info" is never a problem by itself.
 - verdict: a one-line summary.
 - schema_external_refs: fails with the JSON path of every external $ref/$id in the target's Bazaar declaration (info and schema, input and output). CDP's indexer rejects them. Inline the schema to fix it.
 - extensions_placement: fails when the Bazaar block is inside accepts[0] instead of at the top level of the 402 body next to accepts, where the x402 v2 spec puts it. bazaar_extension still checks the block's contents.
 - probe_response: sends the declaration's example input (method, path or query params, example body) to the target unpaid, as CDP's indexer does after a settlement, and fails if the answer isn't a 402, which means validation runs before the paywall. Skipped when there's no usable example.
+- tag_count: warns when resource.tags has more than 5 tags. CDP keeps only the first 5, so put the most important first.
+- description_screening: warns (never fails) when the description or tags contain wording that reads like instructions to an AI agent. A small heuristic of Unlisted's own, not CDP's screening.
+- listed_price_match: when the route is in the Bazaar listing, warns if the live price is more than 2x the listed price, or the payTo, network or asset differ. Info when it isn't listed.
+- search_visibility: info only. The route's rank in Bazaar search (or "not in top 20") for up to 3 phrases from its own description and tags.
+- extension_response (paid mode): whether the target's answer to the test payment carried CDP's EXTENSION-RESPONSES header, and its bazaar status. Most servers don't pass it on, which is normal.
 - When the target answers with something other than a 402, checks is empty and the verdict names the likely cause: for 400, 409 or 422, input validation running before the paywall (submit the URL with its required parameters, or use method and body); for 401/403, other auth in front of the paywall; for 404, a wrong path; for 405, the other method; for 5xx, a server error.
 
 ## Limits

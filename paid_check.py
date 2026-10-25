@@ -46,9 +46,12 @@ unaffected).
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from typing import Any, Optional
 
-from bazaar import check_bazaar_index_status, lookup_curated
+from bazaar import check_bazaar_index_status, run_listing_checks
 from diagnosis import (
     ChallengeParseError,
     CheckResult,
@@ -140,7 +143,7 @@ async def run_paid_check(
     checks.append(await check_probe_response(challenge, response.url, _probe_fetch, method))
     accepts = extract_accepts(challenge)
 
-    settlement_check, unpaid_reason = await _run_settlement_echo_check(
+    settlement_check, unpaid_reason, extension_check = await _run_settlement_echo_check(
         url=response.url,
         accepts=accepts,
         signer=signer,
@@ -150,11 +153,14 @@ async def run_paid_check(
         json_body=json_body,
     )
     checks.append(settlement_check)
+    if extension_check is not None:
+        checks.append(extension_check)
 
     bazaar_check = await check_bazaar_index_status(response.url, bazaar_client, method)
     if bazaar_check is not None:
         checks.append(bazaar_check)
-    curated = await lookup_curated(challenge, response.url, bazaar_client, bazaar_check)
+    listing_checks, curated = await run_listing_checks(challenge, response.url, bazaar_client, bazaar_check)
+    checks.extend(listing_checks)
 
     return DiagnosisReport(
         url=url,
@@ -176,9 +182,10 @@ async def _run_settlement_echo_check(
     transport: Optional[Any],
     method: str = "GET",
     json_body: Optional[Any] = None,
-) -> tuple[CheckResult, Optional[str]]:
-    """The settlement_echo check, plus the reason no test payment was made
-    (None when one was attempted, whatever its outcome)."""
+) -> tuple[CheckResult, Optional[str], Optional[CheckResult]]:
+    """The settlement_echo check, the reason no test payment was made
+    (None when one was attempted, whatever its outcome), and the
+    extension_response check (None when no payment was sent)."""
     accept = select_payable_accept(accepts)
     if accept is None and any(on_our_rails(a) for a in accepts):
         return _unpaid(
@@ -235,11 +242,95 @@ async def _run_settlement_echo_check(
     if outcome.success:
         economic_ceiling.record_spend(price_usd)
 
-    return _outcome_to_check(outcome), None
+    return _outcome_to_check(outcome), None, _extension_response_check(outcome.extension_responses_header)
 
 
-def _unpaid(reason: str) -> tuple[CheckResult, str]:
-    return _skip(reason), reason
+def _unpaid(reason: str) -> tuple[CheckResult, str, None]:
+    return _skip(reason), reason, None
+
+
+def _extension_response_check(header: Optional[str]) -> CheckResult:
+    """Did the target's answer to the paid request carry CDP's
+    EXTENSION-RESPONSES header, and what did its `bazaar` entry say?
+
+    CDP's facilitator sends that header to the seller's server on verify
+    and settle. The x402 SDK treats it as a sidechannel (x402==2.25.0:
+    SettleResponse.extension_responses is "not serialized to buyers"), so a
+    seller only passes it on if it forwards it itself: no header is
+    normal, not a fault.
+    """
+    check_id = "extension_response"
+    if not header:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.INFO,
+            detail=(
+                "The target's answer to the test payment had no EXTENSION-RESPONSES header. "
+                "That's normal: CDP's facilitator sends it to your server on settle, and the "
+                "x402 SDKs don't pass it on to buyers, so Unlisted can't see CDP's Bazaar answer."
+            ),
+            fix=(
+                "Read it on your own server: the header on CDP's settle response is base64 JSON "
+                "with a `bazaar` entry (the x402 Python SDK logs it as \"[x402] extension "
+                "responses\" at INFO level)."
+            ),
+            confidence=Confidence.FACILITATOR,
+        )
+    try:
+        decoded = json.loads(base64.b64decode(header + "=" * (-len(header) % 4)))
+        if not isinstance(decoded, dict):
+            raise ValueError("not a JSON object")
+    except (binascii.Error, ValueError, UnicodeDecodeError) as e:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.WARN,
+            detail=f"The target forwarded an EXTENSION-RESPONSES header that isn't base64 JSON ({e}).",
+            confidence=Confidence.FACILITATOR,
+        )
+
+    entry = decoded.get("bazaar")
+    if not isinstance(entry, dict):
+        return CheckResult(
+            check_id=check_id,
+            status=Status.WARN,
+            detail=(
+                "The target forwarded an EXTENSION-RESPONSES header with no `bazaar` entry "
+                f"(keys: {sorted(decoded)}), which means discovery wasn't submitted with this payment."
+            ),
+            fix=(
+                "Send `extensions.bazaar` (and `resource`) in the payment payload your server "
+                "passes to CDP's facilitator, then make a new paid call."
+            ),
+            confidence=Confidence.FACILITATOR,
+        )
+
+    status = entry.get("status")
+    if status == "rejected":
+        reason = entry.get("rejectedReason") or "no reason given"
+        return CheckResult(
+            check_id=check_id,
+            status=Status.WARN,
+            detail=f"EXTENSION-RESPONSES: CDP's Bazaar rejected the route ({reason}).",
+            fix="Fix the reason CDP gave, then make a new paid call.",
+            confidence=Confidence.FACILITATOR,
+        )
+    if status == "success":
+        return CheckResult(
+            check_id=check_id,
+            status=Status.PASS,
+            detail="EXTENSION-RESPONSES: bazaar status \"success\" (CDP cataloged the route).",
+            confidence=Confidence.FACILITATOR,
+        )
+    return CheckResult(
+        check_id=check_id,
+        status=Status.INFO,
+        detail=(
+            f"EXTENSION-RESPONSES: bazaar status {status!r}."
+            + (" CDP accepted the metadata and is cataloging it; that doesn't confirm it will be indexed."
+               if status == "processing" else "")
+        ),
+        confidence=Confidence.FACILITATOR,
+    )
 
 
 def _skip(detail: str) -> CheckResult:

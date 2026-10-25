@@ -28,7 +28,11 @@ plus `simulation` (would CDP's facilitator accept/reject it) and
 `preflight` (CDP's own equivalent of this project's dry-check rule chain).
 The other three endpoints are useful for browsing/searching the catalog
 but don't add anything validate_x402_resource doesn't already cover for a
-single-URL diagnosis, so they're left unused for this MVP.
+single-URL diagnosis, so they're left unused for this MVP. (Later: the
+merchant listing feeds `curated` and listed_price_match, and search
+feeds search_visibility -- see the sections below. Search was confirmed
+public on 2026-10-25: GET /v2/x402/discovery/search with no credentials
+returned 200, and it's in PUBLIC_OPERATIONS.)
 
 UNAUTHENTICATED, CONFIRMED TWO WAYS: (1) CdpClient.__init__'s own
 docstring: "The CDP Secret API Key is not required to call public
@@ -87,7 +91,18 @@ from types import SimpleNamespace
 from typing import Any, Optional
 from urllib.parse import urlsplit
 
-from diagnosis import CheckResult, Confidence, Status, _resource_url, _resource_value, extract_accepts
+from diagnosis import (
+    CheckResult,
+    Confidence,
+    Status,
+    _description_value,
+    _guarded,
+    _kept_tags,
+    _resource_tags,
+    _resource_url,
+    _resource_value,
+    extract_accepts,
+)
 
 logger = logging.getLogger("x402_doctor")
 
@@ -328,31 +343,62 @@ async def lookup_curated(
 ) -> Optional[bool]:
     """True/False when CDP's discovery listing answers it, None (unknown)
     when the lookup isn't configured, can't be matched, or fails."""
+    listing = await lookup_listing(challenge, final_url, bazaar_client)
+    return curated_from_listing(listing, index_check)
+
+
+def curated_from_listing(
+    listing: Optional[list[dict[str, Any]]], index_check: Optional[CheckResult]
+) -> Optional[bool]:
+    """`curated` from lookup_listing's result."""
+    if listing is None:
+        return None
+    if listing:
+        # The field is omitted for resources that aren't curated.
+        return any(r.get("curated") is True for r in listing)
+    if index_check is not None and index_check.status in (Status.FAIL, Status.WARN):
+        # CDP's validate says it isn't indexed, and only indexed routes can be curated.
+        return False
+    return None
+
+
+async def lookup_listing(
+    challenge: dict[str, Any], final_url: str, bazaar_client: Optional[Any]
+) -> Optional[list[dict[str, Any]]]:
+    """The discovery-listing entries for this endpoint (exact URL matches,
+    else route-template matches): [] when it isn't listed, None when the
+    lookup isn't configured, has no payTo to search by, or fails."""
     if bazaar_client is None:
         return None
     try:
         return await asyncio.wait_for(
-            _lookup_curated(challenge, final_url, bazaar_client, index_check),
+            _lookup_listing(challenge, final_url, bazaar_client),
             timeout=CURATED_LOOKUP_TIMEOUT_SECONDS,
         )
     except Exception as e:  # noqa: BLE001 -- never fail a diagnosis over this
-        logger.info("curated lookup failed: %s: %s", type(e).__name__, e)
+        logger.info("listing lookup failed: %s: %s", type(e).__name__, e)
         return None
 
 
-async def _lookup_curated(
-    challenge: dict[str, Any],
-    final_url: str,
-    bazaar_client: Any,
-    index_check: Optional[CheckResult],
-) -> Optional[bool]:
+def _target_url(challenge: dict[str, Any], final_url: str) -> str:
+    return _resource_url(_resource_value(challenge, extract_accepts(challenge))) or final_url
+
+
+def _match_listed(resources: list[dict[str, Any]], target: str) -> list[dict[str, Any]]:
+    exact = [r for r in resources if _same_url(r.get("resource"), target)]
+    return exact or [r for r in resources if _matches_template(r.get("resource"), target)]
+
+
+async def _lookup_listing(
+    challenge: dict[str, Any], final_url: str, bazaar_client: Any
+) -> Optional[list[dict[str, Any]]]:
     accepts = extract_accepts(challenge)
     pay_to = next(
         (a["payTo"] for a in accepts if isinstance(a.get("payTo"), str) and a["payTo"]), None
     )
     if pay_to is None:
         return None
-    target = _resource_url(_resource_value(challenge, accepts)) or final_url
+    target = _target_url(challenge, final_url)
 
     resources = []
     for page in range(_MERCHANT_MAX_PAGES):
@@ -369,15 +415,14 @@ async def _lookup_curated(
         if len(batch) < _MERCHANT_PAGE_SIZE or (isinstance(total, int) and len(resources) >= total):
             break
 
-    exact = [r for r in resources if _same_url(r.get("resource"), target)]
-    matched = exact or [r for r in resources if _matches_template(r.get("resource"), target)]
-    if matched:
-        # The field is omitted for resources that aren't curated.
-        return any(r.get("curated") is True for r in matched)
-    if index_check is not None and index_check.status in (Status.FAIL, Status.WARN):
-        # CDP's validate says it isn't indexed, and only indexed routes can be curated.
-        return False
-    return None
+    matched = _match_listed(resources, target)
+    if not matched and hasattr(bazaar_client, "search_x402_resources_without_preload_content"):
+        # Not under the live payTo: the listing may still carry an old one
+        # (listed_price_match reports that), so look the host up instead.
+        host = urlsplit(target).netloc
+        if len(host) >= 3:
+            matched = _match_listed(await _search(bazaar_client, url_substring=host), target)
+    return matched
 
 
 def _url_parts(url: Any) -> Optional[tuple[str, str, list[str]]]:
@@ -403,6 +448,210 @@ def _matches_template(listed: Any, target: str) -> bool:
         seg == want or seg.startswith(":") or (seg.startswith("{") and seg.endswith("}"))
         for seg, want in zip(a[2], b[2])
     )
+
+
+SEARCH_LIMIT = 20  # CDP's maximum for /v2/x402/discovery/search
+MAX_SEARCH_PHRASES = 3
+
+
+async def _search(bazaar_client: Any, **params: Any) -> list[dict[str, Any]]:
+    """One page of GET /v2/x402/discovery/search (public, unauthenticated)."""
+    raw = await bazaar_client.search_x402_resources_without_preload_content(limit=SEARCH_LIMIT, **params)
+    status = getattr(raw, "status", 200)
+    if status >= 400:
+        raise _CdpHttpError(status, str(getattr(raw, "reason", "") or ""))
+    data = json.loads(await raw.read())
+    return [r for r in (data.get("resources") or []) if isinstance(r, dict)]
+
+
+def _not_indexed(listing: Optional[list[dict[str, Any]]], index_check: Optional[CheckResult]) -> bool:
+    if listing:
+        return False
+    return listing == [] or (index_check is not None and index_check.status in (Status.FAIL, Status.WARN))
+
+
+def _atomic(amount: Any) -> Optional[int]:
+    try:
+        return int(amount)
+    except (TypeError, ValueError):
+        return None
+
+
+def check_listed_price_match(
+    challenge: dict[str, Any], listing: Optional[list[dict[str, Any]]]
+) -> CheckResult:
+    """Compare the live 402's first payment option with the endpoint's
+    Bazaar listing: a listing only refreshes when a payment settles, so it
+    can keep an old price, payTo, network or asset."""
+    check_id = "listed_price_match"
+    if listing is None:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.INFO,
+            detail="Couldn't read this endpoint's Bazaar listing, so its listed price wasn't compared.",
+            confidence=Confidence.FACILITATOR,
+        )
+    if not listing:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.INFO,
+            detail="Not found in the Bazaar listing, so there's no listed price to compare.",
+            confidence=Confidence.FACILITATOR,
+        )
+
+    live = extract_accepts(challenge)[0]
+    listed_accepts = [a for a in (listing[0].get("accepts") or []) if isinstance(a, dict)]
+    listed = next(
+        (a for a in listed_accepts if a.get("scheme") == live.get("scheme") and a.get("network") == live.get("network")),
+        None,
+    )
+    fix = (
+        "The listing refreshes only when a payment settles through CDP's facilitator. Make "
+        "one new paid call so the Bazaar picks up the live price and payment details."
+    )
+    if listed is None:
+        networks = sorted({str(a.get("network")) for a in listed_accepts})
+        return CheckResult(
+            check_id=check_id,
+            status=Status.WARN,
+            detail=(
+                f"The live 402 asks for {live.get('scheme')!r} on network {live.get('network')!r}, "
+                f"but the Bazaar listing only has network(s) {networks}."
+            ),
+            fix=fix,
+            confidence=Confidence.FACILITATOR,
+        )
+
+    problems = []
+    for field_name in ("payTo", "asset"):
+        live_value, listed_value = live.get(field_name), listed.get(field_name)
+        if str(live_value).lower() != str(listed_value).lower():
+            problems.append(f"{field_name} is {live_value!r} live but {listed_value!r} in the listing")
+    live_amount, listed_amount = _atomic(live.get("amount")), _atomic(listed.get("amount"))
+    price = f"live amount {live.get('amount')}, listed {listed.get('amount')} (atomic units)"
+    if live_amount is not None and listed_amount is not None and live_amount > 2 * listed_amount:
+        problems.append(f"the live price is more than 2x the listed price: {price}")
+
+    if problems:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.WARN,
+            detail="The live 402 doesn't match the Bazaar listing: " + "; ".join(problems) + ".",
+            fix=fix,
+            confidence=Confidence.FACILITATOR,
+        )
+    return CheckResult(
+        check_id=check_id,
+        status=Status.PASS,
+        detail=f"The live 402 matches the Bazaar listing's payTo, network and asset; {price}.",
+        confidence=Confidence.FACILITATOR,
+    )
+
+
+def search_phrases(description: Optional[str], tags: Optional[list[Any]]) -> list[str]:
+    """Up to 3 queries a buyer might type, taken from the endpoint's own
+    metadata: the first words of its description, then its tags in pairs."""
+    phrases = []
+    if isinstance(description, str):
+        first_sentence = re.split(r"[.!?](?:\s|$)", description.strip(), maxsplit=1)[0]
+        words = re.findall(r"[A-Za-z0-9][\w'-]*", first_sentence)[:6]
+        if words:
+            phrases.append(" ".join(words))
+    kept = _kept_tags(tags or [])
+    phrases += [" ".join(kept[i:i + 2]) for i in range(0, min(len(kept), 4), 2)]
+    unique = list({p.lower(): p for p in reversed(phrases)}.values())[::-1]
+    return unique[:MAX_SEARCH_PHRASES]
+
+
+async def check_search_visibility(
+    challenge: dict[str, Any],
+    final_url: str,
+    bazaar_client: Optional[Any],
+    listing: Optional[list[dict[str, Any]]],
+    index_check: Optional[CheckResult],
+) -> Optional[CheckResult]:
+    """Where the endpoint ranks in Bazaar search for phrases from its own
+    description and tags. Info only: being indexed doesn't mean being
+    found, and search ranking is CDP's. None when the client isn't
+    configured, like check_bazaar_index_status."""
+    if bazaar_client is None:
+        return None
+    check_id = "search_visibility"
+    if _not_indexed(listing, index_check):
+        return CheckResult(
+            check_id=check_id,
+            status=Status.INFO,
+            detail="Not indexed, so it can't show up in Bazaar search yet; search wasn't run.",
+            confidence=Confidence.FACILITATOR,
+        )
+
+    accepts = extract_accepts(challenge)
+    resource = _resource_value(challenge, accepts)
+    phrases = search_phrases(_description_value(challenge, resource, accepts), _resource_tags(resource))
+    if not phrases:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.INFO,
+            detail="No description or tags to build search phrases from.",
+            confidence=Confidence.FACILITATOR,
+        )
+
+    target = _target_url(challenge, final_url)
+
+    async def rank(phrase: str) -> str:
+        try:
+            results = await _search(bazaar_client, query=phrase)
+        except Exception as e:  # noqa: BLE001
+            return f"{phrase!r}: search failed ({type(e).__name__})"
+        for i, r in enumerate(results, start=1):
+            if _same_url(r.get("resource"), target) or _matches_template(r.get("resource"), target):
+                return f"{phrase!r}: rank {i}"
+        return f"{phrase!r}: not in top {SEARCH_LIMIT}"
+
+    try:
+        ranks = await asyncio.wait_for(
+            asyncio.gather(*(rank(p) for p in phrases)), timeout=CURATED_LOOKUP_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        return CheckResult(
+            check_id=check_id,
+            status=Status.INFO,
+            detail="CDP's Bazaar search didn't answer in time; search visibility wasn't checked.",
+            confidence=Confidence.FACILITATOR,
+        )
+    return CheckResult(
+        check_id=check_id,
+        status=Status.INFO,
+        detail=(
+            "Bazaar search for phrases from your own description and tags: "
+            + "; ".join(ranks)
+            + ". Indexed doesn't mean found: ranking is CDP's, and these phrases are only a sample."
+        ),
+        fix=(
+            "If buyers can't find you, start the description with what the endpoint does in "
+            "the words a buyer would search for, and put the most important tags first."
+        ),
+        confidence=Confidence.FACILITATOR,
+    )
+
+
+async def run_listing_checks(
+    challenge: dict[str, Any],
+    final_url: str,
+    bazaar_client: Optional[Any],
+    index_check: Optional[CheckResult],
+) -> tuple[list[CheckResult], Optional[bool]]:
+    """listed_price_match and search_visibility, plus `curated`, from one
+    listing lookup. No checks when the Bazaar client isn't configured."""
+    listing = await lookup_listing(challenge, final_url, bazaar_client)
+    curated = curated_from_listing(listing, index_check)
+    if bazaar_client is None:
+        return [], curated
+    checks = [_guarded("listed_price_match", check_listed_price_match, challenge, listing)]
+    search = await check_search_visibility(challenge, final_url, bazaar_client, listing, index_check)
+    if search is not None:
+        checks.append(search)
+    return checks, curated
 
 
 # Top-level answer to "is this endpoint in the Bazaar right now?", derived
@@ -439,6 +688,11 @@ __all__ = [
     "build_bazaar_client",
     "check_bazaar_index_status",
     "lookup_curated",
+    "lookup_listing",
+    "curated_from_listing",
+    "check_listed_price_match",
+    "check_search_visibility",
+    "run_listing_checks",
     "summarize_index_status",
     "CHECK_ID",
 ]

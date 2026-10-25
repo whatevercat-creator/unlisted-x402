@@ -92,6 +92,9 @@ class PaymentTestOutcome:
     settlement_transaction: Optional[str] = None
     settlement_error_reason: Optional[str] = None
     detail: str = ""
+    # Raw EXTENSION-RESPONSES header on the target's answer to the paid
+    # request, if the seller forwarded it (see paid_check's extension_response).
+    extension_responses_header: Optional[str] = None
 
 
 def usd_price_of_accept(accept: dict[str, Any]) -> Optional[float]:
@@ -298,6 +301,12 @@ class _PaymentSentRecorder(httpx.AsyncBaseTransport):
 
 
 def _interpret_response(response: httpx.Response, *, price_usd: Optional[float]) -> PaymentTestOutcome:
+    outcome = _interpret_settlement(response, price_usd=price_usd)
+    outcome.extension_responses_header = response.headers.get("extension-responses")
+    return outcome
+
+
+def _interpret_settlement(response: httpx.Response, *, price_usd: Optional[float]) -> PaymentTestOutcome:
     settlement_header = response.headers.get("payment-response") or response.headers.get(
         "x-payment-response"
     )
