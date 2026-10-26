@@ -176,6 +176,25 @@ def test_diagnose_challenge_carries_bazaar_service_metadata():
     assert resource["description"] == payment.DESCRIPTION
 
 
+@pytest.mark.parametrize(
+    "host", ["[::1", "exa mple.com", "unlisted.sh:notaport", "a@b.test", "evil.test/x?y", ""]
+)
+def test_diagnose_with_malformed_host_header_still_returns_402_challenge(host):
+    """The paywall builds the challenge's resource URL from the request, so
+    a malformed Host must neither 500 the middleware nor leak into the
+    advertised resource -- Starlette falls back to the server address
+    (TestClient's "testserver") instead."""
+    client, fake = _build_paid_client()
+    resp = client.post(
+        "/diagnose", json={"url": "https://api.seller.test/data"}, headers={"host": host}
+    )
+    assert resp.status_code == 402
+    assert len(fake.verify_calls) == 0
+    challenge = _decode_challenge(resp)
+    assert challenge["accepts"][0]["payTo"].lower() == PAY_TO.lower()
+    assert challenge["resource"]["url"] == "http://testserver/diagnose"
+
+
 # --------------------------------------------------------------------------
 # Paying and getting a diagnosis
 # --------------------------------------------------------------------------
