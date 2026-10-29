@@ -20,7 +20,7 @@ pydantic>=2
 #   evm      -- eth-account/eth-abi/eth-keys, needed by
 #               x402.mechanisms.evm.exact for both the client and server
 #               "exact" scheme implementations
-x402[fastapi,httpx,evm]>=2.25.0
+x402[fastapi,httpx,evm]==2.25.0  # pinned: 2.26.0 shrank the unpaid 402 body to {"error":...} and narrowed the bazaar input.method enum to [POST]
 cdp-sdk>=1.48.1  # facilitator/wallet clients (payment.py, outbound_payment.py) + Bazaar discovery/validate client (bazaar.py)
 certifi>=2026.10.19  # eMudhra root removal; floor for httpx TLS trust store
 jsonschema>=4.0.0  # required by x402.extensions.bazaar (payment.py); not the x402[extensions] extra, which downgrades websockets below solana's floor

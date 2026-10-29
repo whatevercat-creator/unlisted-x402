@@ -176,6 +176,21 @@ def test_diagnose_challenge_carries_bazaar_service_metadata():
     assert resource["description"] == payment.DESCRIPTION
 
 
+def test_diagnose_402_contract_unchanged_from_x402_2_25():
+    """Guards the x402==2.25.0 pin in requirements.txt. 2.26.0 changed the
+    live unpaid 402 in two ways: the JSON body shrank to just
+    {"error": "Payment required"} instead of mirroring the PAYMENT-REQUIRED
+    challenge, and the bazaar schema's input.method enum narrowed from
+    [POST, PUT, PATCH] to [POST]. Either change failing here means the SDK
+    moved under the pin."""
+    client, fake = _build_paid_client()
+    resp = client.post("/diagnose", json={"url": "https://api.seller.test/data"})
+    challenge = _decode_challenge(resp)
+    assert resp.json() == challenge
+    method = challenge["extensions"]["bazaar"]["schema"]["properties"]["input"]["properties"]["method"]
+    assert method["enum"] == ["POST", "PUT", "PATCH"]
+
+
 @pytest.mark.parametrize(
     "host", ["[::1", "exa mple.com", "unlisted.sh:notaport", "a@b.test", "evil.test/x?y", ""]
 )
