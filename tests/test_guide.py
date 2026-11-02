@@ -156,8 +156,9 @@ def test_guide_links_official_checklist_first_and_is_dated():
     official = f'<a href="{guide.OFFICIAL_CHECKLIST_URL}">Get discovered (Bazaar)</a>'
     assert official in text
     assert text.index(official) < text.index('id="no-payment"')
-    assert "Updated October 4, 2026" in text
-    assert "<lastmod>2026-10-04</lastmod>" in _client().get("/sitemap.xml").text
+    assert "Updated October 25, 2026" in text
+    assert '"dateModified":"2026-10-25"' in text
+    assert "<lastmod>2026-10-25</lastmod>" in _client().get("/sitemap.xml").text
 
 
 def test_guide_cites_coinbase_confirmations():

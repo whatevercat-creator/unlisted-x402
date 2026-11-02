@@ -15,8 +15,11 @@ from __future__ import annotations
 
 from html import escape
 
-GUIDE_UPDATED = "October 4, 2026"
-GUIDE_UPDATED_ISO = "2026-10-04"
+GUIDE_UPDATED = "October 25, 2026"
+GUIDE_UPDATED_ISO = "2026-10-25"
+# When the open-issues sentence was last checked. Separate from GUIDE_UPDATED:
+# bumping the page date must not re-date that claim.
+OPEN_ISSUES_CHECKED = "October 4, 2026"
 # The x402 v2 spec, for where `extensions` belongs in a 402.
 X402_SPEC_V2_URL = "https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md"
 # Coinbase's own discovery checklist, linked near the top as the official source.
@@ -274,7 +277,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Your challenge is valid, a payment settled through CDP's facilitator, and the facilitator answered with <code>bazaar.status: "processing"</code>. CDP's own validation says the route would be accepted. Days later it still isn't in the catalog.</p>
 <h3>What's known</h3>
 <p>Coinbase's docs say <code>processing</code> means the metadata was accepted and is being cataloged asynchronously, and that it doesn't confirm indexing will succeed. Routes that do get indexed see it too, so it tells you nothing either way.</p>
-<p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 13) and {_CDP_835} (an external <code>$id</code> in the schema, cause 10). As of {GUIDE_UPDATED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
+<p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 13) and {_CDP_835} (an external <code>$id</code> in the schema, cause 10). As of {OPEN_ISSUES_CHECKED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
 <h3>What to try</h3>
 <p>Rule out causes 1 to 15 first, especially 13 and 10, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
