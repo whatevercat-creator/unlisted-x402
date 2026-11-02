@@ -122,3 +122,41 @@ async def test_real_crypto_sentiment_x402_payload_diagnoses_clean(fake_resolver,
 
     assert not report.failures
     assert "No issues found" in report.verdict
+
+
+async def test_openapi_example_verdict_matches_real_report(fake_resolver, monkeypatch):
+    """The /diagnose 200 example in OpenAPI claims to be real output, so its
+    verdict (and the schema/config count in it) must be the same one a real
+    report gives, the Bazaar client being the fake the example was made with."""
+    import dry_check
+    import main
+    from fastapi.testclient import TestClient
+    from tests.test_curated import FakeCdp
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            402,
+            headers={
+                "content-type": "application/json",
+                "payment-required": REAL_PAYMENT_REQUIRED_HEADER,
+            },
+            stream=_ChunkedStream(b"{}"),
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    async def _patched_safe_fetch(url, method="GET", **kwargs):
+        return await sf.safe_fetch(url, method=method, transport=transport, **kwargs)
+
+    monkeypatch.setattr(dry_check, "safe_fetch", _patched_safe_fetch)
+
+    report = await run_dry_check(
+        "https://crypto-sentiment-x402.onrender.com/sentiment/BTC", bazaar_client=FakeCdp()
+    )
+
+    schema = TestClient(main.create_app()).get("/openapi.json").json()
+    example = schema["paths"]["/diagnose"]["post"]["responses"]["200"]["content"][
+        "application/json"
+    ]["example"]
+    assert example["verdict"] == report.verdict
+    assert "the 10 schema/config check(s)" in example["verdict"]
