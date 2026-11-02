@@ -4,13 +4,23 @@ Service: https://crypto-sentiment-x402.onrender.com
 Paid routes checked: GET /sentiment/:symbol ($0.01), GET /history/:symbol ($0.05)
 Report written: 2026-11-02 19:26 UTC
 
-How this was checked: read-only. No payments, no signing, no browser, and no access to the seller's code. Anything that could not be checked that way is marked "not checked" with the reason.
+How this was checked: read-only. No payments, no signing and no browser. No access to the seller's code, except in fix 4, where the owner's code was read to settle one question. Anything that could not be checked that way is marked "not checked" with the reason.
 
 ## Summary
 
 Both routes are listed and healthy, but a buyer searching in everyday words does not find them.
 Neither route came back for "crypto sentiment", "bitcoin news sentiment" or "fear and greed", and the listings have no tags while nearly all the results that do come back have them.
 First add tags and rewrite both descriptions, then make one paid call on each route ($0.06 in total) so the listings update.
+
+## Do this
+
+- [ ] Fix 1: add tags and a service name to both routes.
+- [ ] Fix 2: rewrite both descriptions.
+- [ ] Fix 3: publish an output schema in OpenAPI.
+- [ ] Fix 4: make every place say too little recent news is a 422.
+- [ ] Fix 5: tidy the smaller mismatches.
+- [ ] Deploy fixes 1 to 5 and check they are live.
+- [ ] Last, make the paid calls: one on /sentiment/BTC and one on /history/BTC ($0.06 in total).
 
 ## Catalog status
 
@@ -25,6 +35,7 @@ First add tags and rewrite both descriptions, then make one paid call on each ro
 
 ### 1. Add tags and a service name to both routes
 
+- About how long: about 10 minutes
 - Evidence: both Bazaar listings have no tags and no service name. Of the results returned for "crypto sentiment", 15 of 15 have tags, and for "bitcoin news sentiment", 14 of 14. For "fear and greed" it is 14 of 20. This shows a pattern, not proof: the ranking is CDP's and it is not public. Tags are the cheapest thing to change, and the x402 SDK describes them as "short topical tags for discovery search".
 - Exact change: set `service_name` and `tags` on each paid route's `RouteConfig`. The x402 Python SDK 2.25.0 copies both into `resource` in the 402. The Bazaar keeps the first 5 tags, so put the best tag first.
 - Snippet:
@@ -39,12 +50,14 @@ RouteConfig(
 
 ### 2. Rewrite both descriptions in the words buyers use
 
+- About how long: about 10 minutes
 - Evidence: neither description has a "use when" line. Both start with detail rather than the plain words a buyer types. "/sentiment" spends nearly a quarter of its 486 characters naming outlets. The routes do rank when searched with their own opening words (rank 5 for /sentiment, rank 7 for /history), so the listing is searchable and the words are the likely gap.
 - Exact change: replace `description` on each route's `RouteConfig` with the rewritten text in "Description review" below. Both versions passed Unlisted's length, tag and wording checks.
 - Snippet: see "Description review".
 
 ### 3. Publish an output schema in OpenAPI
 
+- About how long: about 30 minutes
 - Evidence: in /openapi.json, the 200 response of both paid routes has `"schema": {}`, which is an empty schema. There is an example next to it, but no field definitions. x402scan's discovery guide lists "Input/Output Schema Missing" as a reason an operation fails, and its sample shows a real schema. The schema in `extensions.bazaar` is complete and the Bazaar listing already carries it, so this fix is for x402scan and for anyone reading the OpenAPI file.
 - Exact change: give both routes a typed response model, or set `responses.200.content.application/json.schema` by hand. The field definitions can be copied from `extensions.bazaar.schema.properties.output.properties.example` in the live 402.
 - Snippet (/sentiment, shortened):
@@ -70,8 +83,9 @@ RouteConfig(
 
 ### 4. Settle what happens when there is too little recent news
 
-- Evidence: the service's own text disagrees. llms.txt, the /sentiment route notes in OpenAPI and `info.description` say this case is refused with HTTP 422 and not charged. The live 402 description, `info.x-guidance`, the OpenAPI 200 description and the output schema's label list say the reply is a label of "insufficient recent news". A paying agent cannot tell which to expect. This could not be tested without paying.
-- Exact change: confirm the real behavior, then make every place say the same thing. If it is 422, remove "insufficient recent news" from `info.x-guidance`, the 200 description and the label `enum`. The rewritten description assumes 422.
+- About how long: about 20 minutes
+- Evidence: the service's own text disagrees. llms.txt, the /sentiment route notes in OpenAPI and `info.description` say this case is refused with HTTP 422 and not charged. The live 402 description, `info.x-guidance`, the OpenAPI 200 description and the output schema's label list say the reply is a label of "insufficient recent news". The home page says it too: `app/home.py` line 201 says low-coverage coins "often get 'insufficient recent news' (not charged)", and line 246 says "the label says 'insufficient recent news' instead". A paying agent cannot tell which to expect. The real behavior on /sentiment is HTTP 422: `app/sentiment_service.py` line 74 raises it with "Not charged" in the message. That comes from reading the code. It was not seen on a real paid call.
+- Exact change: make every place say 422. Remove "insufficient recent news" from `info.x-guidance`, the 200 description and the label `enum`, and reword the two lines in `app/home.py`. The rewritten description already says this. Keep the label in the /rapidapi documentation: that route returns it on purpose, because RapidAPI meters 4xx responses.
 - Snippet:
 
 ```text
@@ -79,10 +93,21 @@ Remove from info.x-guidance:
 "with too little recent news the label is \"insufficient recent news\" instead."
 Replace with:
 "with too little recent news the request is refused with HTTP 422 and not charged."
+
+In app/home.py line 201, replace:
+Low-coverage coins often get &ldquo;insufficient recent news&rdquo; (not charged).
+With:
+Low-coverage coins are often refused with HTTP 422 (not charged).
+
+In app/home.py lines 245 and 246, replace:
+When there's too little recent news to call it, the label says &ldquo;insufficient recent news&rdquo; instead.
+With:
+When there's too little recent news to call it, the request is refused with HTTP 422 and not charged.
 ```
 
 ### 5. Tidy the smaller mismatches
 
+- About how long: about 20 minutes
 - Evidence and exact change:
   - The example output in both routes' 402 shows `"window": "72h-hl24"`, but llms.txt says the current method is `72h-hl24-v2`. Update the examples.
   - /.well-known/x402 says `"updated": "2026-09-18T00:00:00Z"`. Update it whenever the routes change.
@@ -97,6 +122,7 @@ Replace with:
 
 ### 6. Make one paid call on each route, last
 
+- About how long: about 5 minutes
 - Evidence: the live /history description is 477 characters and the listing still has an older 384-character version. The missing sentence tells buyers that a bad request is not charged. The listing was last updated at the last paid call, on 2026-10-18. A listing only refreshes when a payment settles, so fixes 1 and 2 will not appear until then.
 - Exact change: after fixes 1 to 5 are live, make one real call to /sentiment/BTC ($0.01) and one to /history/BTC ($0.05). Doing this first would waste the payment.
 - Snippet:
@@ -153,7 +179,7 @@ The price is the same in the 402, OpenAPI, llms.txt and both catalogs. The pay-t
 
 ## Evidence
 
-What the catalog holds next to what the service says right now. A difference means the listing is out of date.
+What the catalog holds next to what the service says right now. A difference means the listing is out of date, unless the row says otherwise.
 
 ### GET /sentiment/:symbol
 
@@ -165,7 +191,7 @@ What the catalog holds next to what the service says right now. A difference mea
 | Description | 486 characters | 486 characters | Yes, word for word |
 | Tags | None | None | Yes, and that is the problem |
 | Output schema | Present | Present | Yes |
-| Allowed methods in schema | GET | GET, HEAD, DELETE | No. The listing has narrowed this. It does not affect buyers of this GET route. |
+| Allowed methods in schema | GET | GET, HEAD, DELETE | No. Set by the x402 library, nothing to do. |
 
 ### GET /history/:symbol
 

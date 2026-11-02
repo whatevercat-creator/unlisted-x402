@@ -203,11 +203,11 @@ _DIAGNOSE_EXAMPLE_REPORT: dict[str, Any] = {
             "confidence": "facilitator-side",
         },
     ],
-    "verdict": "No issues found in the 8 schema/config check(s) (resource, scheme match, bazaar "
-    "extension and its placement, description length, external schema refs, and route template "
-    "and example-input probe when reported). This doesn't guarantee a Bazaar listing -- "
-    "settlement must still succeed and actually echo the extension, and the "
-    "eviction/EXTENSION-RESPONSES checks aren't covered by a dry check. Confirmed currently "
+    "verdict": "No issues found in the 10 schema/config check(s) (resource, scheme match, bazaar "
+    "extension and its placement, description length, external schema refs, tag count, "
+    "description wording, and route template and example-input probe when reported). This "
+    "doesn't guarantee a Bazaar listing -- settlement must still succeed and actually echo "
+    "the extension, and the eviction/EXTENSION-RESPONSES checks aren't covered by a dry check. Confirmed currently "
     "indexed in the CDP Bazaar catalog.",
     "parse_error": None,
     "method": "GET",

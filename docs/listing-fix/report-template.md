@@ -1,6 +1,7 @@
 # Listing Fix report: {{service name}}
 
 Service: {{origin URL}}
+Client stack: {{Python / Node / Go}}. Every snippet in this report must match this stack.
 Paid routes checked: {{METHOD /route ($price), ...}}
 Report written: {{YYYY-MM-DD HH:MM UTC}}
 
@@ -11,6 +12,13 @@ How this was checked: read-only. No payments, no signing, no browser, and no acc
 {{Line 1: can buyers find this service today?}}
 {{Line 2: the main reason, in one sentence.}}
 {{Line 3: the first thing to do, and what it costs.}}
+
+## Do this
+
+- [ ] Fix 1: {{short name}}
+- [ ] {{One line for each fix, in the same order as "Fixes in order". Leave out the paid call fix here.}}
+- [ ] Deploy the fixes and check they are live.
+- [ ] Last, make the paid calls: {{routes, and total cost}}.
 
 ## Catalog status
 
@@ -27,6 +35,7 @@ Do these from top to bottom. Each fix says what was seen, what to change and wha
 
 ### 1. {{Short name of the fix}}
 
+- About how long: {{e.g. about 10 minutes}}
 - Evidence: {{what was seen, and when}}
 - Exact change: {{what to change, and where}}
 - Snippet:
@@ -68,7 +77,9 @@ Read at: {{time}}
 
 ## Evidence
 
-What the catalog holds next to what the service says right now. A difference means the listing is out of date.
+What the catalog holds next to what the service says right now. A difference means the listing is out of date, unless the row says otherwise.
+
+If a row doesn't match but needs no action, say why in the "Same?" column in a few words, e.g. "No. Set by the x402 library, nothing to do."
 
 ### {{METHOD /route}}
 
