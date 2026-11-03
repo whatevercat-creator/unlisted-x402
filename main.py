@@ -69,12 +69,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from html import escape
 
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 
 import bazaar
+import fix_page
 import guide
 import outbound_payment
 import payment
@@ -294,6 +295,33 @@ def _log_guide_visit(request: Request) -> None:
         )
     except Exception:  # noqa: BLE001
         pass
+
+
+def _log_event(event: str, request: Request, **fields: str) -> None:
+    """One JSON log line in guide_visit's format: the event, any extra
+    fields, the referring site only and whether it looks like a person.
+    No IP address, cookie, full URL, query string or user-agent string.
+    Never raises."""
+    try:
+        logger.info(
+            json.dumps(
+                {
+                    "event": event,
+                    **fields,
+                    "referrer": _referrer_site(request.headers.get("referer")),
+                    "kind": _visit_kind(request.headers.get("user-agent")),
+                }
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _wants_json(request: Request) -> bool:
+    """True when the client asks for JSON and not HTML (browsers always
+    list text/html, so HTML stays the default)."""
+    accept = request.headers.get("accept", "").lower()
+    return "application/json" in accept and "text/html" not in accept
 
 
 def _target_domain(url: str) -> str:
@@ -669,6 +697,33 @@ def create_app(
         _log_guide_visit(request)
         return HTMLResponse(guide.guide_page(price=price, paid_price=paid_price))
 
+    @fastapi_app.get("/fix", include_in_schema=False)
+    async def listing_fix_page(request: Request) -> Response:
+        _log_event("fix_visit", request)
+        headers = {"Vary": "Accept"}
+        if _wants_json(request):
+            return JSONResponse(fix_page.offer_json(price=price), headers=headers)
+        return HTMLResponse(fix_page.fix_page(price=price, paid_price=paid_price), headers=headers)
+
+    @fastapi_app.get("/fix/sample", response_class=HTMLResponse, include_in_schema=False)
+    async def listing_fix_sample() -> HTMLResponse:
+        return HTMLResponse(fix_page.sample_page())
+
+    def _checkout_redirect(plan: str):
+        async def _redirect(request: Request) -> RedirectResponse:
+            link = fix_page.stripe_link(plan)
+            if not link or (plan == "founding" and not fix_page.FOUNDING_OPEN):
+                return RedirectResponse("/fix#pricing", status_code=302)
+            _log_event("fix_checkout_click", request, plan=plan)
+            return RedirectResponse(link, status_code=302)
+
+        return _redirect
+
+    for _plan in ("founding", "standard"):
+        fastapi_app.add_api_route(
+            f"/fix/buy/{_plan}", _checkout_redirect(_plan), methods=["GET"], include_in_schema=False
+        )
+
     for _path, _file, _type in (
         ("/logo.png", "logo.png", "image/png"),
         ("/favicon.ico", "logo.png", "image/png"),
@@ -775,6 +830,8 @@ def _home_page(*, price: str, paid_price: str) -> str:
 <link rel="canonical" href="https://unlisted.sh/">
 {ICON_LINKS}
 <meta name="description" content="Find out why your x402 endpoint isn't listed in the Coinbase CDP Bazaar, with CDP's live index status and a real test payment.">
+<meta property="og:title" content="Unlisted: why isn't my x402 endpoint in the Bazaar?">
+<meta property="og:description" content="Find out why your x402 endpoint isn't listed in the Coinbase CDP Bazaar, with CDP's live index status and a real test payment.">
 <style>
 :root {{ --bg:#fafaf9; --fg:#1c1917; --muted:#57534e; --card:#fff; --line:#e7e5e4; --accent:#b45309; --code:#f5f5f4; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0c0a09; --fg:#f5f5f4; --muted:#a8a29e; --card:#1c1917; --line:#292524; --accent:#f59e0b; --code:#292524; }} }}
@@ -799,6 +856,7 @@ footer {{ margin-top:48px; color:var(--muted); font-size:0.9rem; }}
 <p class="lede">Your x402 endpoint works, but it isn't in the Bazaar. Find out why, and get it there.</p>
 
 <p>Want to fix it yourself? Read the free guide: <a href="/guide">Why your x402 endpoint isn't in the CDP Bazaar (and how to fix it)</a>.</p>
+<p>Want it done for you? <a href="/fix">Listing Fix</a>: a written report on your service with the exact fixes.</p>
 
 <h2>What makes it different</h2>
 <div class="card"><b>Asks CDP directly</b>Whether your endpoint is indexed right now, when it was last crawled, and whether CDP's own facilitator would accept it. Ground truth, not a guess.</div>
@@ -815,7 +873,8 @@ Content-Type: application/json
 {{"url": "https://your-api.example.com/paid-route"}}</pre>
 <p>For a <code>POST</code> route, add <code>"method": "POST"</code> and, if it needs one, a sample <code>"body"</code>. Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
 
-<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/llms.txt">llms.txt</a> &middot; <a href="/healthz">Status</a></footer>
+<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/llms.txt">llms.txt</a> &middot; <a href="/healthz">Status</a> &middot; <a href="/fix">Listing Fix</a><br>
+Built by <a href="https://forgealone.com">Forge Alone</a></footer>
 </main></body></html>"""
 
 
