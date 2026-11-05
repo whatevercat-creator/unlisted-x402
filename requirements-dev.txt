@@ -2,4 +2,4 @@
 
 # test-only: pip install -r requirements-dev.txt && python -m pytest
 pytest>=9
-pytest-asyncio>=1.4
+pytest-asyncio==1.4.1.post1
