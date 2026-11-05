@@ -25,9 +25,9 @@ from typing import Any
 # OPENS_LABEL and an email link instead of a buy button, and /fix/buy/*
 # sends visitors back to /fix#pricing.
 # ---------------------------------------------------------------------------
-FIX_LINK_STANDARD = ""
-FIX_LINK_FOUNDING = ""
-STRIPE_LINKS_SET = False
+FIX_LINK_STANDARD = "https://buy.stripe.com/6oU14mdfnaxt8Of2LV1Nu03"
+FIX_LINK_FOUNDING = "https://buy.stripe.com/cNi00i5MV5d91lNbir1Nu02"
+STRIPE_LINKS_SET = True
 
 # Founding offer: open until the first 3 clients have bought it.
 FOUNDING_OPEN = True
