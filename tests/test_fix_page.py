@@ -139,7 +139,7 @@ def test_page_copy():
     assert '<a href="#pricing">See pricing and what&#x27;s included</a>' in text
     assert "against the 5 catalogs we cover" in text and len(fix_page._CATALOG_ROWS) == 5
     assert "prices in line with similar services" in text
-    for gone in ("every catalog", "ordinary pricing", "See the Listing Fix price"):
+    for gone in ("every catalog", "ordinary pricing", "See the Listing Fix price", "Or $0.10 with a real test payment"):
         assert gone not in text, gone
     # Every free recheck mention carries its window.
     plain = unescape(re.sub(r"<[^>]+>", " ", text))

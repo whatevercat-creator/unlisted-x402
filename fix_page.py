@@ -551,7 +551,7 @@ def fix_page(*, price: str, paid_price: str) -> str:
 <div class="card"><h3>Check</h3>
 <p class="who">For you, or your agent, if you want an instant answer for one route.</p>
 <p class="cost">{price_h} per check &middot; {paid_h} with a real test payment</p>
-<p>Your 402, your Bazaar declaration and CDP&#x27;s live index status. An agent can pay it itself over x402: USDC on Base, no signup. Or {paid_h} with a real test payment.</p>
+<p>Your 402, your Bazaar declaration and CDP&#x27;s live index status. An agent can pay it itself over x402: USDC on Base, no signup.</p>
 <p class="go"><a href="/">How to call the Check</a></p></div>
 <div class="card"><h3>Listing Fix</h3>
 <p class="who">For you if you want it done for you, with a written report.</p>
