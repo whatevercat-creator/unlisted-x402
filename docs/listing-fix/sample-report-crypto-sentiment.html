@@ -1,0 +1,337 @@
+<!-- Generated from sample-report-crypto-sentiment.md. Do not edit by hand:
+     re-run the conversion and keep tests/test_fix_page.py's heading check passing. -->
+<h1>Listing Fix report: Crypto Sentiment API</h1>
+<p>Service: https://crypto-sentiment-x402.onrender.com<br />
+Paid routes checked: GET /sentiment/:symbol ($0.01), GET /history/:symbol ($0.05)<br />
+Report written: 2026-11-02 19:26 UTC</p>
+<p>How this was checked: read-only. No payments, no signing and no browser. No access to the seller's code, except in fix 4, where the owner's code was read to settle one question. Anything that could not be checked that way is marked &quot;not checked&quot; with the reason.</p>
+<h2>Summary</h2>
+<p>Both routes are listed and healthy, but a buyer searching in everyday words does not find them.<br />
+Neither route came back for &quot;crypto sentiment&quot;, &quot;bitcoin news sentiment&quot; or &quot;fear and greed&quot;, and the listings have no tags while nearly all the results that do come back have them.<br />
+First add tags and rewrite both descriptions, then make one paid call on each route ($0.06 in total) so the listings update.</p>
+<h2>Do this</h2>
+<ul>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Fix 1: add tags and a service name to both routes.</li>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Fix 2: rewrite both descriptions.</li>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Fix 3: publish an output schema in OpenAPI.</li>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Fix 4: make every place say too little recent news is a 422.</li>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Fix 5: tidy the smaller mismatches.</li>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Deploy fixes 1 to 5 and check they are live.</li>
+<li class="todo"><span aria-hidden="true">&#9744;</span> Last, make the paid calls: one on /sentiment/BTC and one on /history/BTC ($0.06 in total).</li>
+</ul>
+<h2>Catalog status</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Catalog</th>
+<th>Read at (UTC)</th>
+<th>Listed?</th>
+<th>What buyers see</th>
+<th>Problem</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CDP Bazaar</td>
+<td>2026-11-02 19:19:47</td>
+<td>Yes, both routes</td>
+<td>/sentiment: last called 2026-10-29 19:49 UTC, 5 calls from 3 payers in 30 days. /history: last called 2026-10-18 19:18 UTC, 3 calls from 2 payers in 30 days.</td>
+<td>/history shows an old description. Neither route has tags or a service name.</td>
+</tr>
+<tr>
+<td>Bazaar search</td>
+<td>2026-11-02 19:20:07, repeated 19:23:36</td>
+<td>Not returned for any of the 3 phrases, on either read</td>
+<td>&quot;crypto sentiment&quot;: 15 other results. &quot;bitcoin news sentiment&quot;: 14 other results. &quot;fear and greed&quot;: 20 other results (the most this search returns).</td>
+<td>Buyers using these words do not see this service.</td>
+</tr>
+<tr>
+<td>x402scan</td>
+<td>2026-11-02 19:21:15</td>
+<td>Not checked</td>
+<td>Unknown</td>
+<td>Cannot be checked read-only for free. See &quot;Not checked&quot; at the end.</td>
+</tr>
+<tr>
+<td>Agentic.market</td>
+<td>2026-11-02 19:23:10</td>
+<td>Card present, not enriched</td>
+<td>Card name is the bare hostname. Service description, category, icon and tags are empty. Both routes and prices are correct.</td>
+<td>The card shows no service-level description or category.</td>
+</tr>
+</tbody>
+</table></div>
+<h2>Fixes in order</h2>
+<h3>1. Add tags and a service name to both routes</h3>
+<ul>
+<li>About how long: about 10 minutes</li>
+<li>Evidence: both Bazaar listings have no tags and no service name. Of the results returned for &quot;crypto sentiment&quot;, 15 of 15 have tags, and for &quot;bitcoin news sentiment&quot;, 14 of 14. For &quot;fear and greed&quot; it is 14 of 20. This shows a pattern, not proof: the ranking is CDP's and it is not public. Tags are the cheapest thing to change, and the x402 SDK describes them as &quot;short topical tags for discovery search&quot;.</li>
+<li>Exact change: set <code>service_name</code> and <code>tags</code> on each paid route's <code>RouteConfig</code>. The x402 Python SDK 2.25.0 copies both into <code>resource</code> in the 402. The Bazaar keeps the first 5 tags, so put the best tag first.</li>
+<li>Snippet:</li>
+</ul>
+<pre><code class="language-python">RouteConfig(
+    # ...keep the existing accepts, description, mime_type and extensions...
+    service_name=&quot;Crypto Sentiment API&quot;,  # 32 characters or fewer
+    tags=[&quot;crypto sentiment&quot;, &quot;bitcoin sentiment&quot;, &quot;news sentiment&quot;, &quot;fear and greed&quot;, &quot;crypto news&quot;],
+)
+</code></pre>
+<h3>2. Rewrite both descriptions in the words buyers use</h3>
+<ul>
+<li>About how long: about 10 minutes</li>
+<li>Evidence: neither description has a &quot;use when&quot; line. Both start with detail rather than the plain words a buyer types. &quot;/sentiment&quot; spends nearly a quarter of its 486 characters naming outlets. The routes do rank when searched with their own opening words (rank 5 for /sentiment, rank 7 for /history), so the listing is searchable and the words are the likely gap.</li>
+<li>Exact change: replace <code>description</code> on each route's <code>RouteConfig</code> with the rewritten text in &quot;Description review&quot; below. Both versions passed Unlisted's length, tag and wording checks.</li>
+<li>Snippet: see &quot;Description review&quot;.</li>
+</ul>
+<h3>3. Publish an output schema in OpenAPI</h3>
+<ul>
+<li>About how long: about 30 minutes</li>
+<li>Evidence: in /openapi.json, the 200 response of both paid routes has <code>&quot;schema&quot;: {}</code>, which is an empty schema. There is an example next to it, but no field definitions. x402scan's discovery guide lists &quot;Input/Output Schema Missing&quot; as a reason an operation fails, and its sample shows a real schema. The schema in <code>extensions.bazaar</code> is complete and the Bazaar listing already carries it, so this fix is for x402scan and for anyone reading the OpenAPI file.</li>
+<li>Exact change: give both routes a typed response model, or set <code>responses.200.content.application/json.schema</code> by hand. The field definitions can be copied from <code>extensions.bazaar.schema.properties.output.properties.example</code> in the live 402.</li>
+<li>Snippet (/sentiment, shortened):</li>
+</ul>
+<pre><code class="language-json">&quot;200&quot;: {
+  &quot;content&quot;: {
+    &quot;application/json&quot;: {
+      &quot;schema&quot;: {
+        &quot;type&quot;: &quot;object&quot;,
+        &quot;properties&quot;: {
+          &quot;symbol&quot;: {&quot;type&quot;: &quot;string&quot;},
+          &quot;overall_sentiment&quot;: {&quot;type&quot;: &quot;object&quot;},
+          &quot;drivers&quot;: {&quot;type&quot;: &quot;array&quot;, &quot;maxItems&quot;: 5, &quot;items&quot;: {&quot;type&quot;: &quot;object&quot;}},
+          &quot;drivers_summary&quot;: {&quot;type&quot;: &quot;string&quot;}
+        },
+        &quot;required&quot;: [&quot;symbol&quot;, &quot;overall_sentiment&quot;]
+      }
+    }
+  }
+}
+</code></pre>
+<h3>4. Settle what happens when there is too little recent news</h3>
+<ul>
+<li>About how long: about 20 minutes</li>
+<li>Evidence: the service's own text disagrees. llms.txt, the /sentiment route notes in OpenAPI and <code>info.description</code> say this case is refused with HTTP 422 and not charged. The live 402 description, <code>info.x-guidance</code>, the OpenAPI 200 description and the output schema's label list say the reply is a label of &quot;insufficient recent news&quot;. The home page says it too: <code>app/home.py</code> line 201 says low-coverage coins &quot;often get 'insufficient recent news' (not charged)&quot;, and line 246 says &quot;the label says 'insufficient recent news' instead&quot;. A paying agent cannot tell which to expect. The real behavior on /sentiment is HTTP 422: <code>app/sentiment_service.py</code> line 74 raises it with &quot;Not charged&quot; in the message. That comes from reading the code. It was not seen on a real paid call.</li>
+<li>Exact change: make every place say 422. Remove &quot;insufficient recent news&quot; from <code>info.x-guidance</code>, the 200 description and the label <code>enum</code>, and reword the two lines in <code>app/home.py</code>. The rewritten description already says this. Keep the label in the /rapidapi documentation: that route returns it on purpose, because RapidAPI meters 4xx responses.</li>
+<li>Snippet:</li>
+</ul>
+<pre><code class="language-text">Remove from info.x-guidance:
+&quot;with too little recent news the label is \&quot;insufficient recent news\&quot; instead.&quot;
+Replace with:
+&quot;with too little recent news the request is refused with HTTP 422 and not charged.&quot;
+
+In app/home.py line 201, replace:
+Low-coverage coins often get &amp;ldquo;insufficient recent news&amp;rdquo; (not charged).
+With:
+Low-coverage coins are often refused with HTTP 422 (not charged).
+
+In app/home.py lines 245 and 246, replace:
+When there's too little recent news to call it, the label says &amp;ldquo;insufficient recent news&amp;rdquo; instead.
+With:
+When there's too little recent news to call it, the request is refused with HTTP 422 and not charged.
+</code></pre>
+<h3>5. Tidy the smaller mismatches</h3>
+<ul>
+<li>About how long: about 20 minutes</li>
+<li>Evidence and exact change:
+<ul>
+<li>The example output in both routes' 402 shows <code>&quot;window&quot;: &quot;72h-hl24&quot;</code>, but llms.txt says the current method is <code>72h-hl24-v2</code>. Update the examples.</li>
+<li>/.well-known/x402 says <code>&quot;updated&quot;: &quot;2026-09-18T00:00:00Z&quot;</code>. Update it whenever the routes change.</li>
+<li>The root page <code>/</code> lists only <code>/sentiment</code> as the paid endpoint. Add <code>/history</code>.</li>
+<li>The two paid routes have no <code>tags</code> in OpenAPI, and x402scan's sample includes them. Add one, for example <code>&quot;tags&quot;: [&quot;Sentiment&quot;]</code>.</li>
+<li>/history's <code>symbol</code> has no list of allowed values in OpenAPI, while /sentiment's does. Add one if the list is the same.</li>
+</ul>
+</li>
+<li>Snippet:</li>
+</ul>
+<pre><code class="language-json">&quot;tags&quot;: [&quot;Sentiment&quot;]
+</code></pre>
+<h3>6. Make one paid call on each route, last</h3>
+<ul>
+<li>About how long: about 5 minutes</li>
+<li>Evidence: the live /history description is 477 characters and the listing still has an older 384-character version. The missing sentence tells buyers that a bad request is not charged. The listing was last updated at the last paid call, on 2026-10-18. A listing only refreshes when a payment settles, so fixes 1 and 2 will not appear until then.</li>
+<li>Exact change: after fixes 1 to 5 are live, make one real call to /sentiment/BTC ($0.01) and one to /history/BTC ($0.05). Doing this first would waste the payment.</li>
+<li>Snippet:</li>
+</ul>
+<pre><code class="language-text">GET https://crypto-sentiment-x402.onrender.com/sentiment/BTC   $0.01
+GET https://crypto-sentiment-x402.onrender.com/history/BTC     $0.05
+</code></pre>
+<h2>Description review</h2>
+<h3>GET /sentiment/:symbol</h3>
+<p>Current (486 characters):</p>
+<blockquote>
+<p>Real-time crypto sentiment for a ticker symbol (e.g. BTC, ETH, SOL) from 9 crypto news RSS outlets (CoinDesk, Cointelegraph, Decrypt, Bitcoin Magazine, The Block, CryptoSlate, NewsBTC, CryptoPotato, The Defiant) and the Fear &amp; Greed Index. Headlines from the last 72h, weighted toward the newest. Returns a bullish/bearish/neutral label (or 'insufficient recent news'), score, sample size and the top 5 headlines behind it (title, link) as JSON. Path param: symbol, e.g. /sentiment/BTC.</p>
+</blockquote>
+<p>Rewritten (449 characters, limit 500):</p>
+<blockquote>
+<p>Crypto news sentiment for one coin (24 tickers, e.g. BTC, ETH, SOL): a bullish, bearish or neutral label, a -1 to 1 score, sample size and the top 5 headlines behind it, with links. Built from 9 crypto news outlets and the Fear &amp; Greed Index, last 72 hours, newest weighted most. Use when an agent needs a current read on news sentiment for a coin before research or a trade. Too little recent news or an unsupported coin is refused and not charged.</p>
+</blockquote>
+<p>Use-when line: Use when an agent needs a current read on news sentiment for a coin before research or a trade.</p>
+<p>Best 5 tags, most important first: crypto sentiment, bitcoin sentiment, news sentiment, fear and greed, crypto news</p>
+<h3>GET /history/:symbol</h3>
+<p>Current (477 characters):</p>
+<blockquote>
+<p>Hourly crypto news-sentiment readings for a ticker (e.g. BTC, ETH), recorded live at the top of every UTC hour and never backfilled. Each row: observed_at, average_compound (-1 to 1), sample_size, Fear &amp; Greed value, matcher and the top 3 headlines behind it (title, link). Query start/end as ISO 8601; default last 7 days, max 30 days per call. An unlogged symbol, an invalid range or a range with no readings is refused and not charged. See /archive for symbols and coverage.</p>
+</blockquote>
+<p>Rewritten (413 characters, limit 500):</p>
+<blockquote>
+<p>Hourly crypto news sentiment history for one coin: score (-1 to 1), sample size, Fear &amp; Greed value and top 3 headlines per hour, recorded live and never backfilled. Use when backtesting or comparing sentiment over time, up to 30 days per call (default 7). Query start/end as ISO 8601. A range with no readings, an invalid range or an unlogged coin is refused and not charged. See /archive for coins and coverage.</p>
+</blockquote>
+<p>Use-when line: Use when backtesting or comparing sentiment over time, up to 30 days per call (default 7).</p>
+<p>Best 5 tags, most important first: sentiment history, crypto sentiment, bitcoin sentiment, news sentiment, backtesting</p>
+<p>Instructions-to-agents wording: none found in the current or rewritten text, using Unlisted's own small word list. That list is not CDP's screening, which is not public.</p>
+<h2>Trust signals</h2>
+<p>Read at: 2026-11-02 19:23:10 to 19:23:19 UTC</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Result</th>
+<th>Reading</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Health endpoint</td>
+<td>GET /health returned 200 <code>{&quot;status&quot;:&quot;ok&quot;}</code> in 0.24 s (median of 5)</td>
+<td>Good</td>
+</tr>
+<tr>
+<td>Response time, unpaid request</td>
+<td>/sentiment/BTC median 0.32 s, slowest 0.47 s. /history/BTC median 0.28 s, slowest 0.50 s (5 reads each)</td>
+<td>Good. No slow first request was seen.</td>
+</tr>
+<tr>
+<td>Unknown path</td>
+<td>GET /definitely-not-a-route-xyz returned 404</td>
+<td>Good</td>
+</tr>
+<tr>
+<td>Prices</td>
+<td>$0.01 and $0.05, in USDC on Base. The 39 distinct listings from the three searches charge $0.001 to $0.05, median $0.005.</td>
+<td>Ordinary. /sentiment is about twice that median, and /history is at the top of the range, though that range is not limited to hourly archives.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The price is the same in the 402, OpenAPI, llms.txt and both catalogs. The pay-to address passes its checksum and matches the listing.</p>
+<h2>Evidence</h2>
+<p>What the catalog holds next to what the service says right now. A difference means the listing is out of date, unless the row says otherwise.</p>
+<h3>GET /sentiment/:symbol</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Bazaar listing, read 19:19:47 UTC</th>
+<th>Live 402, read 19:18:19 UTC</th>
+<th>Same?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Price</td>
+<td>10000 ($0.01)</td>
+<td>10000 ($0.01)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Pay-to address</td>
+<td>0xA6E1&hellip;E074</td>
+<td>0xA6E1&hellip;E074</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Network and asset</td>
+<td>Base (eip155:8453), USDC</td>
+<td>Base (eip155:8453), USDC</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Description</td>
+<td>486 characters</td>
+<td>486 characters</td>
+<td>Yes, word for word</td>
+</tr>
+<tr>
+<td>Tags</td>
+<td>None</td>
+<td>None</td>
+<td>Yes, and that is the problem</td>
+</tr>
+<tr>
+<td>Output schema</td>
+<td>Present</td>
+<td>Present</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Allowed methods in schema</td>
+<td>GET</td>
+<td>GET, HEAD, DELETE</td>
+<td>No. Set by the x402 library, nothing to do.</td>
+</tr>
+</tbody>
+</table></div>
+<h3>GET /history/:symbol</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Bazaar listing, read 19:19:47 UTC</th>
+<th>Live 402, read 19:18:20 UTC</th>
+<th>Same?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Price</td>
+<td>50000 ($0.05)</td>
+<td>50000 ($0.05)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Pay-to address</td>
+<td>0xA6E1&hellip;E074</td>
+<td>0xA6E1&hellip;E074</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Network and asset</td>
+<td>Base (eip155:8453), USDC</td>
+<td>Base (eip155:8453), USDC</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Description</td>
+<td>384 characters, last updated 2026-10-18</td>
+<td>477 characters</td>
+<td>No. The listing lacks: &quot;An unlogged symbol, an invalid range or a range with no readings is refused and not charged.&quot;</td>
+</tr>
+<tr>
+<td>Tags</td>
+<td>None</td>
+<td>None</td>
+<td>Yes, and that is the problem</td>
+</tr>
+<tr>
+<td>Output schema</td>
+<td>Present</td>
+<td>Present</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table></div>
+<p>Automated checks, run on both routes at 19:19:26 and 19:19:27 UTC: 13 of the 15 can run without a payment. 11 passed and none failed. The other 2 only report information: no tags declared, and the search rank for each route's own opening words. The OpenAPI file also has what catalogs ask for apart from fix 3: <code>x-payment-info</code> objects with price and protocols on both paid routes, a 402 response, input parameters, <code>info.x-guidance</code>, and <code>security: []</code> on every free route. /.well-known/x402 is present and lists both routes.</p>
+<h2>Next steps and recheck</h2>
+<ol>
+<li>Make fixes 1 to 5 and deploy them. The 402 changes on purpose here, so compare it against the rewritten text rather than the old one.</li>
+<li>Make the two paid calls in fix 6.</li>
+<li>If x402scan does not show the service, register it at <a href="https://www.x402scan.com/resources/register">https://www.x402scan.com/resources/register</a>. That needs a wallet sign-in, so the owner has to do it.</li>
+</ol>
+<p>Recheck: read the listing the same day the paid calls settle, then run the three searches again one week later. It counts as fixed when both listings show the new description and 5 tags, and at least one route comes back for &quot;crypto sentiment&quot;. Search ranking belongs to CDP, so better wording can improve the odds but cannot promise a position.</p>
+<p>Not checked:</p>
+<ul>
+<li>x402scan: its data API charges $0.01 to $0.02 per read, so it was not called. The public page returned the same empty shell for this service and for a made-up address, because the page fills in inside a browser. The site map lists servers by ID and has 1,000 entries, so it cannot answer this either.</li>
+<li>Whether paid calls work: 2 of the 15 automated checks, <code>settlement_echo</code> and <code>extension_response</code>, need a real payment and were not run.</li>
+<li>The call counts include any test payments by the owner. The catalogs do not separate them.</li>
+<li>What happens after payment for a bad request. Unpaid, /sentiment/NOTACOIN and /history/BTC?start=garbage both return the normal 402, and the &quot;refused and not charged&quot; claim comes from the service's documentation.</li>
+<li>How Agentic.market decides which cards are enriched. 74 of 4,160 cards were enriched at 19:25 UTC, and its documentation does not say how to get there. The card's route text comes from the Bazaar listing, so fix 6 should update that part.</li>
+<li>One set of timings is a snapshot, not a measure of uptime.</li>
+</ul>

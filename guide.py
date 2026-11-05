@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from html import escape
 
+import fix_page
+
 GUIDE_UPDATED = "October 25, 2026"
 GUIDE_UPDATED_ISO = "2026-10-25"
 # When the open-issues sentence was last checked. Separate from GUIDE_UPDATED:
@@ -312,6 +314,8 @@ Content-Type: application/json
 </table></div>
 <p>Replace the sample URL with your own endpoint. The report opens with <code>bazaar.indexed</code> (<code>true</code>, <code>false</code>, or <code>null</code> if CDP couldn't be reached) and <code>bazaar.curated</code> (<code>true</code>, <code>false</code>, or <code>null</code> if unknown), then one result per check with a fix for each failure.</p>
 
+<div class="card"><b>Want it done for you?</b> The <a href="/fix">Listing Fix</a> checks your service against the agent catalogs and emails you a written report with the exact changes to make.</div>
+
 <footer><a href="/">unlisted.sh</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a><br>
 Unlisted isn't affiliated with Coinbase. &ldquo;CDP&rdquo; and &ldquo;Bazaar&rdquo; refer to Coinbase Developer Platform's x402 facilitator and discovery catalog.</footer>
 </main></body></html>"""
@@ -359,6 +363,7 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - extension_response (paid mode): whether the target's answer to the test payment carried CDP's EXTENSION-RESPONSES header, and its bazaar status. Most servers don't pass it on, which is normal.
 - When the target answers with something other than a 402, checks is empty and the verdict names the likely cause: for 400, 409 or 422, input validation running before the paywall (submit the URL with its required parameters, or use method and body); for 401/403, other auth in front of the paywall; for 404, a wrong path; for 405, the other method; for 5xx, a server error.
 
+{fix_page.llms_section()}
 ## Limits
 
 - Unlisted reports whether CDP would accept a route and can make a fresh settlement. It cannot make CDP index a route.
@@ -378,5 +383,5 @@ SITEMAP_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url><loc>https://unlisted.sh/</loc></url>
 <url><loc>{CANONICAL_URL}</loc><lastmod>{GUIDE_UPDATED_ISO}</lastmod></url>
-</urlset>
+{fix_page.SITEMAP_ENTRIES}</urlset>
 """

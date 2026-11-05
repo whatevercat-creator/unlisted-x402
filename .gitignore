@@ -3,3 +3,4 @@ __pycache__/
 .env
 Claude outputs/
 .baseline402/
+.preview/
