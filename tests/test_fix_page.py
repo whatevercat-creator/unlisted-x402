@@ -61,7 +61,7 @@ def test_fix_page_content():
         assert tag in text, tag
     assert "Unlisted isn&#x27;t affiliated with Coinbase." in text
     assert '<a href="https://forgealone.com">Forge Alone</a>' in text
-    assert "No keys or wallet access. Report in 3 business days. Free recheck." in text
+    assert "No keys or wallet access. Report in 3 business days. Free recheck within 30 days." in text
     assert 'href="/fix/sample"' in text and 'href="/guide#other-facilitator"' in text
     for lead, body in fix_page.TERMS:
         assert f"<p><b>{escape(lead)}:</b> {escape(body)}</p>" in text, lead
@@ -95,13 +95,18 @@ def test_no_stripe_link_while_links_unset(monkeypatch):
 def test_buttons_use_the_logging_redirects_once_links_set(monkeypatch):
     monkeypatch.setattr(fix_page, "FIX_LINK_STANDARD", "https://buy.stripe.com/test_standard")
     monkeypatch.setattr(fix_page, "FIX_LINK_FOUNDING", "https://buy.stripe.com/test_founding")
+    monkeypatch.setattr(fix_page, "FOUNDING_OPEN", True)
     text = _html()
     assert "buy.stripe.com" not in text
-    assert 'href="/fix/buy/founding">Get the Listing Fix: $29 founding price</a>' in text
-    assert 'href="/fix/buy/standard"' in text
+    # While the founding offer is open, only its button shows, with
+    # "then $49" beside it; the $49 button is hidden.
+    assert ('href="/fix/buy/founding">Get the Listing Fix: $29 founding price</a>'
+            '<span class="then">then $49</span>') in text
+    assert "/fix/buy/standard" not in text
     assert fix_page.OPENS_LABEL not in text
     # Primary button in the hero and repeated after the pricing card.
     assert text.count('href="/fix/buy/founding"') == 2
+    assert text.count('<span class="then">then $49</span>') == 2
     after_card = text[text.index('id="pricing"'):]
     after_card = after_card[after_card.index("</div>"):]
     assert 'href="/fix/buy/founding"' in after_card
@@ -114,9 +119,32 @@ def test_founding_closed_hides_founding_offer(monkeypatch):
     text = _html()
     assert "/fix/buy/founding" not in text
     assert 'href="/fix/buy/standard">Get the Listing Fix: $49</a>' in text
+    assert text.count('href="/fix/buy/standard"') == 2
+    assert 'class="then"' not in text
     offers = [b for b in _ld_blocks(text) if b["@type"] == "Service"][0]["offers"]
     assert [o["price"] for o in offers] == ["49"]
     assert fix_page.offer_json(price="$0.02")["founding_open"] is False
+
+
+def test_standard_buy_link_works_while_founding_open(monkeypatch):
+    monkeypatch.setattr(fix_page, "FOUNDING_OPEN", True)
+    monkeypatch.setattr(fix_page, "FIX_LINK_STANDARD", "https://buy.stripe.com/test_standard")
+    resp = _client().get("/fix/buy/standard", follow_redirects=False)
+    assert resp.status_code == 302 and resp.headers["location"] == "https://buy.stripe.com/test_standard"
+
+
+def test_page_copy():
+    text = _html()
+    assert '<p class="cost">$0.02 per check &middot; $0.10 with a real test payment</p>' in text
+    assert '<a href="#pricing">See pricing and what&#x27;s included</a>' in text
+    assert "against the 5 catalogs we cover" in text and len(fix_page._CATALOG_ROWS) == 5
+    assert "prices in line with similar services" in text
+    for gone in ("every catalog", "ordinary pricing", "See the Listing Fix price", "Or $0.10 with a real test payment"):
+        assert gone not in text, gone
+    # Every free recheck mention carries its window.
+    plain = unescape(re.sub(r"<[^>]+>", " ", text))
+    mentions = re.findall(r"free recheck[^.]*", plain, re.I)
+    assert mentions and all(f"within {fix_page.RECHECK_DAYS} days" in m for m in mentions), mentions
 
 
 @pytest.mark.skipif(not fix_page.STRIPE_LINKS_SET, reason="Stripe Payment Links not set yet (fix_page.STRIPE_LINKS_SET)")

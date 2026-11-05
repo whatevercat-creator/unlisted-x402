@@ -215,12 +215,13 @@ def _buy_button(plan: str, *, secondary: bool = False) -> str:
 
 
 def _checkout_buttons(extra: str = "") -> str:
-    """Primary button, plus the regular-price one while the founding offer
-    is open, then `extra` (more buttons) on the same row. While the primary
-    link is unset, the opening date goes under the row."""
+    """The one buy button (founding while FOUNDING_OPEN, else standard),
+    with "then $49" beside the founding one, then `extra` (more buttons) on
+    the same row. /fix/buy/standard keeps working while it isn't shown.
+    While the primary link is unset, the opening date goes under the row."""
     parts = [_buy_button(primary_plan())]
-    if stripe_link(primary_plan()) and FOUNDING_OPEN and stripe_link("standard"):
-        parts.append(_buy_button("standard", secondary=True))
+    if stripe_link(primary_plan()) and FOUNDING_OPEN:
+        parts.append(f'<span class="then">then ${PRICE_USD}</span>')
     row = f'<div class="actions">{"".join(parts)}{extra}</div>'
     if not stripe_link(primary_plan()):
         row += f'\n<p class="opens">{OPENS_LABEL}. Until then, email us.</p>'
@@ -344,6 +345,7 @@ h3 { font-size:1.05rem; margin-top:0; margin-bottom:4px; }
 .actions { margin-top:20px; margin-bottom:0; }
 .btn { display:block; text-align:center; min-height:44px; padding:11px 18px; border-radius:8px; background:var(--accent); color:var(--on-accent); font-weight:600; text-decoration:none; margin-bottom:10px; }
 .btn2 { background:transparent; color:var(--accent); border:2px solid var(--accent); }
+.then { display:block; text-align:center; color:var(--muted); font-size:0.92rem; margin:-4px 0 10px; }
 .opens { color:var(--muted); font-size:0.92rem; margin-top:0; margin-bottom:4px; }
 .micro { color:var(--muted); font-size:0.92rem; margin-top:4px; }
 .paths { display:grid; grid-template-columns:1fr; gap:12px; margin-top:12px; }
@@ -374,6 +376,7 @@ footer { margin-top:56px; color:var(--muted); font-size:0.9rem; border-top:1px s
 footer a { display:inline-block; padding:6px 0; }
 @media (min-width:600px) {
   .btn { display:inline-block; margin-right:10px; }
+  .then { display:inline-block; margin:0 16px 10px 0; }
   .fit { grid-template-columns:1fr 1fr; }
 }
 @media (min-width:760px) { .paths { grid-template-columns:repeat(3,1fr); } }
@@ -417,7 +420,7 @@ _REPORT_SECTIONS = (
     ),
     (
         "Trust signals",
-        "health, response time, unknown paths returning 404, ordinary pricing and real paid calls.",
+        "health, response time, unknown paths returning 404, prices in line with similar services and real paid calls.",
         'Health endpoint: GET /health returned 200 {"status":"ok"} in 0.24 s (median of 5).',
     ),
     (
@@ -536,7 +539,7 @@ def fix_page(*, price: str, paid_price: str) -> str:
 <p class="lede">It&#x27;s often something silent: an <code>http://</code> resource URL where <code>https://</code> belongs, an extensions block in the wrong place, a description the Bazaar screens out, or missing OpenAPI fields. The Listing Fix finds it and tells you the exact change.</p>
 <p>{escape(_founding_note())}</p>
 {_checkout_buttons('<a class="btn btn2" href="/fix/sample">See a sample report</a>')}
-<p class="micro">No keys or wallet access. Report in {DELIVERY_BUSINESS_DAYS} business days. Free recheck.</p>
+<p class="micro">No keys or wallet access. Report in {DELIVERY_BUSINESS_DAYS} business days. Free recheck within {RECHECK_DAYS} days.</p>
 
 <h2 id="paths">Which path fits you?</h2>
 <div class="paths">
@@ -547,14 +550,14 @@ def fix_page(*, price: str, paid_price: str) -> str:
 <p class="go"><a href="/guide">Read the free guide</a></p></div>
 <div class="card"><h3>Check</h3>
 <p class="who">For you, or your agent, if you want an instant answer for one route.</p>
-<p class="cost">{price_h} per check</p>
-<p>Your 402, your Bazaar declaration and CDP&#x27;s live index status. An agent can pay it itself over x402: USDC on Base, no signup. Or {paid_h} with a real test payment.</p>
+<p class="cost">{price_h} per check &middot; {paid_h} with a real test payment</p>
+<p>Your 402, your Bazaar declaration and CDP&#x27;s live index status. An agent can pay it itself over x402: USDC on Base, no signup.</p>
 <p class="go"><a href="/">How to call the Check</a></p></div>
 <div class="card"><h3>Listing Fix</h3>
 <p class="who">For you if you want it done for you, with a written report.</p>
 <p class="cost">${PRICE_USD}{f" (${FOUNDING_PRICE_USD} founding price)" if FOUNDING_OPEN else ""}</p>
-<p>We check one service against every catalog and send you the exact fixes, in order.</p>
-<p class="go"><a href="#pricing">See the Listing Fix price</a></p></div>
+<p>We check one service against the 5 catalogs we cover and send you the exact fixes, in order.</p>
+<p class="go"><a href="#pricing">See pricing and what&#x27;s included</a></p></div>
 </div>
 
 <h2 id="what-you-get">What you get</h2>
