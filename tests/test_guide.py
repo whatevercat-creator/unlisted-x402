@@ -39,16 +39,17 @@ def test_guide_stays_free_with_paywall_active():
 
 CAUSE_ANCHORS = ("no-payment", "other-facilitator", "extension-missing", "extension-placement", "description",
                  "http-resource", "resource-missing", "empty-body", "post-as-get",
-                 "schema-refs", "wildcard", "stale", "probe-rejected", "collapsed", "dropped")
+                 "schema-refs", "wildcard", "stale", "probe-rejected", "collapsed", "dropped",
+                 "header-missing")
 
 
-def test_guide_has_fifteen_anchored_causes():
+def test_guide_has_sixteen_anchored_causes():
     text = _client().get("/guide").text
-    assert len(CAUSE_ANCHORS) == 15
+    assert len(CAUSE_ANCHORS) == 16
     for number, anchor in enumerate(CAUSE_ANCHORS, start=1):
         assert f'<h2 id="{anchor}">{number}. ' in text, anchor
         assert f'href="#{anchor}"' in text
-    assert "Rule out causes 1 to 15" in text
+    assert "Rule out causes 1 to 16" in text
 
 
 def test_guide_check_ids_exist_in_code():
@@ -156,9 +157,9 @@ def test_guide_links_official_checklist_first_and_is_dated():
     official = f'<a href="{guide.OFFICIAL_CHECKLIST_URL}">Get discovered (Bazaar)</a>'
     assert official in text
     assert text.index(official) < text.index('id="no-payment"')
-    assert "Updated October 25, 2026" in text
-    assert '"dateModified":"2026-10-25"' in text
-    assert "<lastmod>2026-10-25</lastmod>" in _client().get("/sitemap.xml").text
+    assert "Updated November 6, 2026" in text
+    assert '"dateModified":"2026-11-06"' in text
+    assert "<lastmod>2026-11-06</lastmod>" in _client().get("/sitemap.xml").text
 
 
 def test_guide_cites_coinbase_confirmations():

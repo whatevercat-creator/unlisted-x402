@@ -24,6 +24,7 @@ from diagnosis import (
     Confidence,
     DiagnosisReport,
     Status,
+    check_payment_required_header,
     decode_challenge,
     non_402_verdict,
     run_checks,
@@ -76,7 +77,10 @@ async def run_dry_check(
             parse_error=str(e),
         )
 
-    checks = run_checks(challenge, final_url=response.url)
+    checks = [
+        check_payment_required_header(response.headers.get("payment-required"), response.body),
+        *run_checks(challenge, final_url=response.url),
+    ]
     # Looked up at call time so tests that monkeypatch safe_fetch cover it too.
     checks.append(await check_probe_response(challenge, response.url, safe_fetch, method))
 

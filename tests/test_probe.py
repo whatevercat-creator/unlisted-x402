@@ -16,7 +16,7 @@ from diagnosis import Status, check_schema_external_refs, extract_accepts, run_c
 from probe import build_probe_request, check_probe_response
 from safe_fetch import FetchError, ResolvedTarget, SSRFBlocked
 from tests.test_diagnosis import _good_challenge
-from tests.test_dry_check import _streaming_response
+from tests.test_dry_check import _streaming_response, _v2_402
 
 TARGET = "https://target.test/analyze"
 
@@ -249,12 +249,12 @@ async def test_dry_check_reports_probe_rejected_by_validation(fake_resolver, mon
 
 
 async def test_dry_check_survives_probe_fetch_error(fake_resolver, monkeypatch):
-    challenge = json.dumps(_challenge(POST_INPUT)).encode()
+    challenge = _challenge(POST_INPUT)
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.content:
             raise httpx.ConnectError("connection reset")
-        return _streaming_response(402, challenge)
+        return _v2_402(challenge)
 
     _patch_transport(monkeypatch, handler)
     report = await dry_check.run_dry_check(TARGET, method="POST")
