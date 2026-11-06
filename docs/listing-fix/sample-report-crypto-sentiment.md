@@ -1,3 +1,5 @@
+Unlisted ran 15 checks when this report was written; it now runs 16 (payment_required_header was added on Nov 6, 2026).
+
 # Listing Fix report: Crypto Sentiment API
 
 Service: https://crypto-sentiment-x402.onrender.com
