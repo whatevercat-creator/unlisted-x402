@@ -58,6 +58,7 @@ from diagnosis import (
     Confidence,
     DiagnosisReport,
     Status,
+    check_payment_required_header,
     decode_challenge,
     extract_accepts,
     non_402_verdict,
@@ -135,7 +136,10 @@ async def run_paid_check(
             ),
         )
 
-    checks = run_checks(challenge, final_url=response.url)
+    checks = [
+        check_payment_required_header(response.headers.get("payment-required"), response.body),
+        *run_checks(challenge, final_url=response.url),
+    ]
 
     async def _probe_fetch(probe_url: str, **kwargs: Any):
         return await safe_fetch(probe_url, transport=transport, **kwargs)

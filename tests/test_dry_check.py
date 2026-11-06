@@ -5,6 +5,7 @@ Network is replaced with httpx.MockTransport + a monkeypatched resolver,
 same approach as test_safe_fetch.py.
 """
 
+import base64
 import json
 
 import httpx
@@ -42,6 +43,13 @@ def _streaming_response(status_code, body: bytes = b"", headers=None) -> httpx.R
     return httpx.Response(status_code, headers=headers, stream=_ChunkedStream(body))
 
 
+def _v2_402(challenge: dict) -> httpx.Response:
+    """A correct x402 v2 402: the challenge base64-encoded in PAYMENT-REQUIRED,
+    and the same JSON as the body."""
+    raw = json.dumps(challenge).encode()
+    return _streaming_response(402, raw, headers={"payment-required": base64.b64encode(raw).decode()})
+
+
 # Matches the CONFIRMED real shape (x402Version 2): resource/description/
 # extensions at the challenge level, not nested per-accepts-entry. See
 # diagnosis.py's module docstring for the real curl output this came from.
@@ -75,7 +83,7 @@ GOOD_CHALLENGE = {
 
 async def test_dry_check_reports_clean_challenge(fake_resolver, monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
-        return _streaming_response(402, json.dumps(GOOD_CHALLENGE).encode())
+        return _v2_402(GOOD_CHALLENGE)
 
     transport = httpx.MockTransport(handler)
 
@@ -109,7 +117,7 @@ async def test_dry_check_flags_scheme_mismatch_and_missing_bazaar(fake_resolver,
     del broken["extensions"]
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return _streaming_response(402, json.dumps(broken).encode())
+        return _v2_402(broken)
 
     transport = httpx.MockTransport(handler)
 

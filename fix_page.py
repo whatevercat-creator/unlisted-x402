@@ -59,6 +59,7 @@ MAILTO = f"mailto:{CONTACT_EMAIL}?subject=Listing%20Fix"
 # multiple_accepts_noted isn't counted: it's a note that only the first of
 # several payment options was checked, not a check.
 CHECKS_WITHOUT_PAYMENT = (
+    "payment_required_header",
     "resource_present",
     "scheme_mismatch",
     "bazaar_extension",

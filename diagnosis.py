@@ -165,15 +165,114 @@ def decode_challenge(header_value: Optional[str], body: bytes) -> dict[str, Any]
     doesn't decode cleanly, for sellers running an older body-only shape.
     """
     if header_value:
-        try:
-            padded = header_value + "=" * (-len(header_value) % 4)
-            decoded_bytes = base64.b64decode(padded, validate=False)
-            data = json.loads(decoded_bytes)
-            if isinstance(data, dict):
-                return data
-        except (binascii.Error, ValueError, json.JSONDecodeError, UnicodeDecodeError):
-            pass  # fall through to body parsing -- a malformed header isn't fatal
+        data = _decode_header(header_value)
+        if data is not None:
+            return data
+        # fall through to body parsing -- a malformed header isn't fatal
+        # here; check_payment_required_header reports it.
     return parse_challenge(body)
+
+
+def _decode_header(header_value: str) -> Optional[dict[str, Any]]:
+    """The `payment-required` header's base64 JSON object, or None when it
+    doesn't decode to one."""
+    try:
+        padded = header_value + "=" * (-len(header_value) % 4)
+        data = json.loads(base64.b64decode(padded, validate=False))
+    except (binascii.Error, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _has_payment_options(challenge: Optional[dict[str, Any]]) -> bool:
+    accepts = challenge.get("accepts") if isinstance(challenge, dict) else None
+    return isinstance(accepts, list) and any(isinstance(a, dict) for a in accepts)
+
+
+def check_payment_required_header(header_value: Optional[str], body: bytes) -> CheckResult:
+    """Does an x402 v2 402 carry its challenge in the PAYMENT-REQUIRED header?
+
+    decode_challenge falls back to the body, so every other check can pass
+    a v2 route that only sends the body. CDP's validator (its
+    payment_required_header check) and the v2 Bazaar indexer read the
+    header, so such a route can't be listed.
+
+    x402 v1 puts the challenge in the body and has no PAYMENT-REQUIRED
+    header, so a v1 challenge without one is SKIP, not FAIL. The version
+    comes from the body's x402Version when the header is missing. A header
+    that is present but doesn't decode fails whatever the version: only v2
+    sends one, and v2 readers can't use it.
+    """
+    if header_value is not None:
+        if _has_payment_options(_decode_header(header_value)):
+            return CheckResult(
+                check_id="payment_required_header",
+                status=Status.PASS,
+                detail="The PAYMENT-REQUIRED header decodes to a challenge with payment options",
+                confidence=Confidence.SERVER,
+            )
+        return CheckResult(
+            check_id="payment_required_header",
+            status=Status.FAIL,
+            detail=(
+                "The 402 has a PAYMENT-REQUIRED header, but it doesn't decode to a usable "
+                "challenge: it should be base64-encoded JSON with a non-empty `accepts` list"
+            ),
+            fix=(
+                "Your PAYMENT-REQUIRED header is there, but it isn't base64-encoded JSON "
+                "with payment options in `accepts`. CDP's validator and the Bazaar indexer "
+                "read this header, so the route can't be listed. Set it to the full 402 "
+                "challenge JSON, base64-encoded, the same JSON you send as the body."
+            ),
+            confidence=Confidence.SERVER,
+        )
+
+    try:
+        body_challenge: Optional[dict[str, Any]] = parse_challenge(body)
+    except ChallengeParseError:
+        body_challenge = None
+    version = body_challenge.get("x402Version") if body_challenge else None
+
+    if version == 1:
+        return CheckResult(
+            check_id="payment_required_header",
+            status=Status.SKIP,
+            detail=(
+                "x402Version 1 challenge: v1 sends the challenge in the 402 body and has no "
+                "PAYMENT-REQUIRED header, so this check doesn't apply"
+            ),
+        )
+    if version != 2:
+        return CheckResult(
+            check_id="payment_required_header",
+            status=Status.SKIP,
+            detail="No PAYMENT-REQUIRED header, and the 402 body doesn't say which x402Version it is",
+        )
+    if _has_payment_options(body_challenge):
+        return CheckResult(
+            check_id="payment_required_header",
+            status=Status.FAIL,
+            detail="x402Version 2 challenge in the 402 body, but no PAYMENT-REQUIRED header",
+            fix=(
+                "Your 402 body is fine, but the PAYMENT-REQUIRED header is missing. For "
+                "x402 v2, CDP's validator and the Bazaar indexer read the header, so the "
+                "route can't be listed. Send the same JSON, base64-encoded, in a "
+                "PAYMENT-REQUIRED header."
+            ),
+            confidence=Confidence.SERVER,
+        )
+    return CheckResult(
+        check_id="payment_required_header",
+        status=Status.FAIL,
+        detail="x402Version 2 402 with no PAYMENT-REQUIRED header, and no payment options in the body",
+        fix=(
+            "The PAYMENT-REQUIRED header is missing, and the 402 body has no payment options "
+            "in `accepts` either. For x402 v2, CDP's validator and the Bazaar indexer read "
+            "the header. Send the full challenge JSON, base64-encoded, in a PAYMENT-REQUIRED "
+            "header, and the same JSON as the body."
+        ),
+        confidence=Confidence.SERVER,
+    )
 
 
 def extract_accepts(challenge: dict[str, Any]) -> list[dict[str, Any]]:
@@ -926,7 +1025,8 @@ def summarize(checks: list[CheckResult]) -> str:
         schema_check_count = len([c for c in checks if c.check_id not in _NON_SCHEMA_CHECK_IDS])
         sentence = (
             f"No issues found in the {schema_check_count} schema/config check(s) "
-            "(resource, scheme match, bazaar extension and its placement, description length, "
+            "(PAYMENT-REQUIRED header, resource, scheme match, bazaar extension and its "
+            "placement, description length, "
             "external schema refs, tag count, description wording, and route template and "
             "example-input probe when reported)."
         )

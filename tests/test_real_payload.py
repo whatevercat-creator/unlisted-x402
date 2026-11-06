@@ -159,4 +159,4 @@ async def test_openapi_example_verdict_matches_real_report(fake_resolver, monkey
         "application/json"
     ]["example"]
     assert example["verdict"] == report.verdict
-    assert "the 10 schema/config check(s)" in example["verdict"]
+    assert "the 11 schema/config check(s)" in example["verdict"]

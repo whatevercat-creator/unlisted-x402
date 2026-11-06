@@ -17,8 +17,8 @@ from html import escape
 
 import fix_page
 
-GUIDE_UPDATED = "October 25, 2026"
-GUIDE_UPDATED_ISO = "2026-10-25"
+GUIDE_UPDATED = "November 6, 2026"
+GUIDE_UPDATED_ISO = "2026-11-06"
 # When the open-issues sentence was last checked. Separate from GUIDE_UPDATED:
 # bumping the page date must not re-date that claim.
 OPEN_ISSUES_CHECKED = "October 4, 2026"
@@ -45,6 +45,7 @@ REFERENCED_CHECK_IDS = (
     "listed_price_match",
     "extension_response",
     "search_visibility",
+    "payment_required_header",
 )
 
 _STYLE = """
@@ -134,6 +135,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#probe-rejected">A bare request or CDP's probe gets a 400 instead of a 402</a></li>
 <li><a href="#collapsed">Several URLs collapse into one entry</a></li>
 <li><a href="#dropped">The route dropped out after 30 days without a settlement</a></li>
+<li><a href="#header-missing">The 402 body is right but the PAYMENT-REQUIRED header is missing</a></li>
 </ol>
 <p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>. Listed but not featured? See <a href="#not-curated">indexed, but not curated (<code>enriched: false</code>)</a>. Listed but hard to find? See <a href="#listing-behavior">how a listing behaves</a>.</p></div>
 
@@ -146,6 +148,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <tr><td>A plain request to your route, without its parameters, gets a 400, 409 or 422</td><td><a href="#probe-rejected">13</a></td></tr>
 <tr><td>Your decoded challenge has <code>extensions</code> inside an <code>accepts</code> entry</td><td><a href="#extension-placement">4</a></td></tr>
 <tr><td>Some x402 clients say there are no payment options</td><td><a href="#empty-body">8</a></td></tr>
+<tr><td>CDP&#x27;s validation fails its <code>payment_required_header</code> check</td><td><a href="#header-missing">16</a></td></tr>
 <tr><td>CDP's facilitator answered <code>rejected</code></td><td><a href="#extension-missing">3</a> (read <code>rejectedReason</code>)</td></tr>
 <tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#probe-rejected">13</a> and <a href="#schema-refs">10</a>, then <a href="#stuck-processing">the open reports</a></td></tr>
 <tr><td>Was listed, now gone</td><td><a href="#dropped">15</a></td></tr>
@@ -274,6 +277,13 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Coinbase's docs say resources that go 30 days without a settlement are removed, and endpoints that stop returning a 402 are eventually removed too. A listed route needs ongoing paid traffic through CDP's facilitator. Keep sending <code>paymentPayload.extensions.bazaar</code> and <code>paymentPayload.resource</code> on every settlement: a Coinbase contributor said in {_CDP_835} that this keeps your quality metrics aggregating and your route listed.</p>
 {_check_box("bazaar_index_status", f"the {price} Check tells you whether CDP has the route indexed right now and, when it does, its 30-day calls and unique payers. The {paid_price} Check + real payment (<code>?mode=paid</code>) can make a settlement for routes priced up to $0.05.")}
 
+<h2 id="header-missing">16. The 402 body is right but the <code>PAYMENT-REQUIRED</code> header is missing</h2>
+<h3>Symptom</h3>
+<p>Your route answers an unpaid request with a 402 and a correct challenge as JSON in the body, but sends no <code>PAYMENT-REQUIRED</code> header. Tools that read the body are happy with it. For x402 v2, though, CDP's validator and the Bazaar indexer read the header, not the body, so CDP's validation fails the route on its <code>payment_required_header</code> check and it can't be listed.</p>
+<h3>Fix</h3>
+<p>Send the same JSON, base64-encoded, in a <code>PAYMENT-REQUIRED</code> header, and keep it in the body too (cause 8). Current x402 SDKs set the header for you. Hand-rolled 402 responses often leave it out. Then make a new settlement through CDP.</p>
+{_check_box("payment_required_header", "the Check fails when an x402 v2 402 has no <code>PAYMENT-REQUIRED</code> header, even when the body is right, and when the header is there but doesn't decode to base64 JSON with payment options in <code>accepts</code>. It skips x402 v1 challenges, which carry the challenge in the body and have no such header.")}
+
 <h2 id="stuck-processing">If none of these fit: accepted as &ldquo;processing&rdquo;, never indexed</h2>
 <h3>Symptom</h3>
 <p>Your challenge is valid, a payment settled through CDP's facilitator, and the facilitator answered with <code>bazaar.status: "processing"</code>. CDP's own validation says the route would be accepted. Days later it still isn't in the catalog.</p>
@@ -281,7 +291,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Coinbase's docs say <code>processing</code> means the metadata was accepted and is being cataloged asynchronously, and that it doesn't confirm indexing will succeed. Routes that do get indexed see it too, so it tells you nothing either way.</p>
 <p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 13) and {_CDP_835} (an external <code>$id</code> in the schema, cause 10). As of {OPEN_ISSUES_CHECKED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
 <h3>What to try</h3>
-<p>Rule out causes 1 to 15 first, especially 13 and 10, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
+<p>Rule out causes 1 to 16 first, especially 13 and 10, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
 
 <h2 id="not-curated">Indexed, but not curated (<code>enriched: false</code>)</h2>
@@ -354,6 +364,7 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - checks: a list of results, each with check_id, status ("pass", "fail", "warn", "info" or "skip"), detail and, for failures, a fix. "info" is never a problem by itself.
 - verdict: a one-line summary.
 - schema_external_refs: fails with the JSON path of every external $ref/$id in the target's Bazaar declaration (info and schema, input and output). CDP's indexer rejects them. Inline the schema to fix it.
+- payment_required_header: for x402 v2, fails when the 402 has no PAYMENT-REQUIRED header (even if the body is right) or the header doesn't decode to base64 JSON with payment options. CDP's validator and the Bazaar indexer read the header. Skipped for x402 v1.
 - extensions_placement: fails when the Bazaar block is inside accepts[0] instead of at the top level of the 402 body next to accepts, where the x402 v2 spec puts it. bazaar_extension still checks the block's contents.
 - probe_response: sends the declaration's example input (method, path or query params, example body) to the target unpaid, as CDP's indexer does after a settlement, and fails if the answer isn't a 402, which means validation runs before the paywall. Skipped when there's no usable example.
 - tag_count: warns when resource.tags has more than 5 tags. CDP keeps only the first 5, so put the most important first.
