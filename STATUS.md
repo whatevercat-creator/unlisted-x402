@@ -38,7 +38,9 @@ Last updated: 2026-11-06. Facts come from the repo unless marked.
    the new description and tags from a new settlement.
 2. **Live index lookup**: the README says the Check "asks CDP for its live
    index status". That depends on `X402_DOCTOR_ENABLE_BAZAAR_LOOKUP` on
-   Render (unverified). The new 402 description no longer claims it.
+   Render, and it's on: confirmed from logs on 2026-11-06 (an Oct 31
+   diagnose_usage line recorded `"bazaar": "indexed"`). The new 402
+   description still doesn't claim it, since it depends on that setting.
 3. **Card statement name**: `fix_page.STATEMENT_NAME` is "CRYPTO SENTIMENT",
    with a code comment to confirm it in Stripe before deploy. Whether that
    was done: unverified.
