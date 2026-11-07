@@ -17,8 +17,8 @@ from html import escape
 
 import fix_page
 
-GUIDE_UPDATED = "November 6, 2026"
-GUIDE_UPDATED_ISO = "2026-11-06"
+GUIDE_UPDATED = "November 7, 2026"
+GUIDE_UPDATED_ISO = "2026-11-07"
 # When the open-issues sentence was last checked. Separate from GUIDE_UPDATED:
 # bumping the page date must not re-date that claim.
 OPEN_ISSUES_CHECKED = "October 4, 2026"
@@ -198,7 +198,7 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <h3>Symptom</h3>
 <p>Everything else is right, but payments fail. Coinbase's docs say CDP's facilitator rejects verify and settle requests whose description is over 500 characters, and sellers have reported the failure being hard to trace (see <a href="https://github.com/x402-foundation/x402/issues/2993">x402 #2993</a>).</p>
 <h3>Fix</h3>
-<p>Keep the route's <code>description</code> to 500 characters or fewer. One or two sentences is plenty: what the endpoint does and when an agent should call it.</p>
+<p>Keep the route's <code>description</code> to 500 characters or fewer. One or two sentences is plenty: lead with what the endpoint does, in the words a buyer would search for, then say when an agent should call it (a &ldquo;Use when ...&rdquo; sentence).</p>
 {_check_box("description_length", "the Check measures your description against the limit.")}
 
 <h2 id="http-resource">6. <code>resource.url</code> says <code>http://</code> behind a proxy</h2>

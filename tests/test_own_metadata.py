@@ -1,5 +1,6 @@
 """Unlisted's own discovery metadata follows the advice it gives customers:
-a "Use when" description under 500 characters, 1 to 5 tags with the most
+a description that leads with search words, then a "Use when" sentence,
+under 500 characters, 1 to 5 tags with the most
 important first, a serviceName, and a described input/output schema.
 Local only: reads the module constants and the 402 the app actually serves.
 """
@@ -23,9 +24,16 @@ def _served_challenge() -> dict:
     return json.loads(base64.b64decode(resp.headers["payment-required"]))
 
 
-def test_description_is_a_use_when_line_under_500_chars():
-    assert payment.DESCRIPTION.startswith("Use when ")
+def test_description_has_a_use_when_sentence_under_500_chars():
+    assert "Use when " in payment.DESCRIPTION
     assert len(payment.DESCRIPTION) <= 500
+
+
+def test_description_leads_with_search_words():
+    d = payment.DESCRIPTION
+    assert d.startswith("x402 Bazaar listing checker: ")
+    assert not d.startswith("Use when")
+    assert d.index("Bazaar listing checker") < d.index("Use when ")
 
 
 def test_description_promises_no_listing_and_no_live_index_check():
