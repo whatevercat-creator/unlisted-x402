@@ -329,6 +329,16 @@ def _target_domain(url: str) -> str:
     return urlparse(url).hostname or url
 
 
+# Added to a /diagnose report (dry or paid) only when at least one check
+# FAILed. Listing Fix is a written report the seller applies, so this never
+# says we apply anything, never promises a listing, and names no price (the
+# founding price lives on /fix only).
+FIX_CTA = (
+    "Want it done for you? Listing Fix: a written report with the exact fixes, "
+    f"plus a free recheck. {fix_page.CANONICAL_URL}"
+)
+
+
 # RFC 2606 reserved example domains. Unlisted's marketplace listing shows a
 # sample URL on one of these, and callers paste it verbatim -- reject it
 # up front with a pointer to what's wrong instead of fetching it.
@@ -673,6 +683,10 @@ def create_app(
             **body,
             "method": payload.method,
         }
+        if report.failures:
+            # Additive only: every existing key keeps its name and value.
+            result["next_step"] = FIX_CTA
+            _log_event("fix_cta_shown", request)
         if unpaid_paid_mode:
             return JSONResponse(status_code=422, content=jsonable_encoder(result))
         return result
