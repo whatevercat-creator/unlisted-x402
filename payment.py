@@ -106,10 +106,15 @@ DEFAULT_PAID_PRICE_USD = os.environ.get("X402_DOCTOR_PAID_PRICE_USD", "$0.10")
 # listing for exceeding a limit this whole product exists to catch in other
 # people's endpoints would be a fairly embarrassing bug.
 SERVICE_NAME = "Unlisted"
-TAGS = ["x402", "diagnostics", "bazaar"]
+# Most important first: CDP keeps only the first 5 tags.
+TAGS = ["bazaar", "x402", "diagnostics", "listing", "cdp"]
+# A "Use when" line, per the advice Unlisted gives its own customers. It
+# doesn't claim a live index check (that depends on a deployment setting)
+# and doesn't promise a listing.
 DESCRIPTION = (
-    "Find out why an x402 endpoint isn't listed in the Coinbase CDP Bazaar: "
-    "checks CDP's live index status and can make a real test payment."
+    "Use when an x402 endpoint isn't showing up in the Coinbase CDP Bazaar. "
+    "Checks its 402 challenge and discovery metadata and says what to fix; "
+    "add ?mode=paid for one real test payment."
 )
 
 
@@ -120,9 +125,11 @@ DESCRIPTION = (
 BAZAAR_EXTENSION = declare_discovery_extension(
     input={"url": "https://api.example.com/paid-route"},
     input_schema={
+        "type": "object",
         "properties": {
             "url": {
                 "type": "string",
+                "format": "uri",
                 "description": "Full https URL of the x402-protected endpoint to diagnose. "
                 "Add ?mode=paid to /diagnose itself to also make one real test payment.",
             },
@@ -154,11 +161,54 @@ BAZAAR_EXTENSION = declare_discovery_extension(
         },
         schema={
             "properties": {
-                "bazaar": {"type": "object"},
-                "url": {"type": "string"},
-                "mode": {"type": "string"},
-                "checks": {"type": "array"},
-                "verdict": {"type": "string"},
+                "bazaar": {
+                    "type": "object",
+                    "description": "Whether the target is in the CDP Bazaar right now.",
+                    "properties": {
+                        "indexed": {
+                            "type": ["boolean", "null"],
+                            "description": "true or false, or null if the live lookup didn't run.",
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["indexed", "not_indexed_would_be_accepted", "not_indexed", "unknown"],
+                        },
+                        "curated": {
+                            "type": ["boolean", "null"],
+                            "description": "CDP's curated flag, or null if unknown.",
+                        },
+                        "detail": {"type": "string"},
+                    },
+                },
+                "url": {"type": "string", "description": "The target URL that was checked."},
+                "mode": {"type": "string", "enum": ["dry", "paid"]},
+                "http_status": {
+                    "type": ["integer", "null"],
+                    "description": "HTTP status the target answered with.",
+                },
+                "checks": {
+                    "type": "array",
+                    "description": "One entry per check, in the order they ran.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "check_id": {"type": "string", "description": "Stable check name, e.g. probe_response."},
+                            "status": {"type": "string", "enum": ["pass", "fail", "warn", "skip", "info"]},
+                            "detail": {"type": "string", "description": "What the check found."},
+                            "fix": {
+                                "type": ["string", "null"],
+                                "description": "How to fix a failed or warned check, or null.",
+                            },
+                        },
+                        "required": ["check_id", "status", "detail"],
+                    },
+                },
+                "verdict": {"type": "string", "description": "One-line summary of the checks."},
+                "next_step": {
+                    "type": "string",
+                    "description": "Optional. A one-line suggested next step, present only "
+                    "when at least one check failed.",
+                },
             },
             "required": ["bazaar", "checks", "verdict"],
         },
