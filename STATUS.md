@@ -5,15 +5,16 @@ Last updated: 2026-11-06. Facts come from the repo unless marked.
 
 ## What's live
 
-- **master at d52df0d** "Merge branch 'header-check'", merged 2026-11-06
-  12:15 ET. The live unpaid 402 for POST /diagnose read on 2026-11-06 at
-  21:29 ET matched the capture from that deploy byte for byte. (The Render
-  deploy record wasn't read this session.)
-- **Pending on branch `step2-nov6`** (not live yet):
+- **master at the `step2-nov6` merge**, pushed 2026-11-06 (Eastern), on
+  top of d52df0d ("Merge branch 'header-check'"). Find the hash with
+  `git log --merges -1 --grep step2-nov6`. It added:
   - `next_step` line in /diagnose reports that have a failed check.
   - Planned 402 change: "Use when" description, tags
     `bazaar, x402, diagnostics, listing, cdp`, fuller input/output schema.
+    `accepts[]` (price, payTo, network, asset) unchanged.
   - `CLAUDE.md`, this file, and the push-window hook.
+- Unlisted's own Bazaar listing still shows the old description and tags
+  until a new paid call settles (open item 1).
 
 ## Prices
 
