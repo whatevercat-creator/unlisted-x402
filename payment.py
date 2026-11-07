@@ -108,13 +108,15 @@ DEFAULT_PAID_PRICE_USD = os.environ.get("X402_DOCTOR_PAID_PRICE_USD", "$0.10")
 SERVICE_NAME = "Unlisted"
 # Most important first: CDP keeps only the first 5 tags.
 TAGS = ["bazaar", "x402", "diagnostics", "listing", "cdp"]
-# A "Use when" line, per the advice Unlisted gives its own customers. It
-# doesn't claim a live index check (that depends on a deployment setting)
-# and doesn't promise a listing.
+# Per the advice Unlisted gives its own customers: lead with what it is, in
+# the words a buyer searches ("x402 Bazaar listing checker"), then a "Use
+# when" sentence. It doesn't claim a live index check (that depends on a
+# deployment setting) and doesn't promise a listing.
 DESCRIPTION = (
-    "Use when an x402 endpoint isn't showing up in the Coinbase CDP Bazaar. "
-    "Checks its 402 challenge and discovery metadata and says what to fix; "
-    "add ?mode=paid for one real test payment."
+    "x402 Bazaar listing checker: finds why an x402 endpoint isn't showing up in "
+    "the Coinbase CDP Bazaar. Checks its 402 challenge and discovery metadata and "
+    "says what to fix. Use when your x402 endpoint isn't listed; add ?mode=paid "
+    "for one real test payment (not charged if none is made)."
 )
 
 

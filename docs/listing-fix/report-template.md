@@ -56,7 +56,9 @@ Current ({{n}} characters):
 
 Rewritten ({{n}} characters, limit 500):
 
-> {{new description}}
+> {{new description: what it is first, in the words a buyer would search, then the "Use when ..." sentence}}
+
+Opens with (search words): {{the words it starts with, e.g. "Crypto news sentiment"}}
 
 Use-when line: {{the "Use when ..." sentence}}
 

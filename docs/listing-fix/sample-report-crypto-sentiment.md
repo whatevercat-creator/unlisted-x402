@@ -146,6 +146,8 @@ Rewritten (449 characters, limit 500):
 
 > Crypto news sentiment for one coin (24 tickers, e.g. BTC, ETH, SOL): a bullish, bearish or neutral label, a -1 to 1 score, sample size and the top 5 headlines behind it, with links. Built from 9 crypto news outlets and the Fear & Greed Index, last 72 hours, newest weighted most. Use when an agent needs a current read on news sentiment for a coin before research or a trade. Too little recent news or an unsupported coin is refused and not charged.
 
+Opens with (search words): Crypto news sentiment
+
 Use-when line: Use when an agent needs a current read on news sentiment for a coin before research or a trade.
 
 Best 5 tags, most important first: crypto sentiment, bitcoin sentiment, news sentiment, fear and greed, crypto news
@@ -159,6 +161,8 @@ Current (477 characters):
 Rewritten (413 characters, limit 500):
 
 > Hourly crypto news sentiment history for one coin: score (-1 to 1), sample size, Fear & Greed value and top 3 headlines per hour, recorded live and never backfilled. Use when backtesting or comparing sentiment over time, up to 30 days per call (default 7). Query start/end as ISO 8601. A range with no readings, an invalid range or an unlogged coin is refused and not charged. See /archive for coins and coverage.
+
+Opens with (search words): Hourly crypto news sentiment history
 
 Use-when line: Use when backtesting or comparing sentiment over time, up to 30 days per call (default 7).
 

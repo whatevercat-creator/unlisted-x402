@@ -416,8 +416,10 @@ _REPORT_SECTIONS = (
     ),
     (
         "Description rewrite",
-        'a "use when" line, under 500 characters, and your best 5 tags first.',
-        "Use when an agent needs a current read on news sentiment for a coin before research or a trade.",
+        'search words first (what it is, as a buyer would type it), then a "use when" line, '
+        "under 500 characters, and your best 5 tags first.",
+        "Crypto news sentiment for one coin: label, score and top 5 headlines. Use when an agent "
+        "needs a current read on news sentiment for a coin before research or a trade.",
     ),
     (
         "Trust signals",
