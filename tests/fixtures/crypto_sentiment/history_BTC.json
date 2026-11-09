@@ -1,0 +1,308 @@
+{
+  "accepts": [
+    {
+      "amount": "50000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "extra": {
+        "name": "USD Coin",
+        "version": "2"
+      },
+      "maxTimeoutSeconds": 300,
+      "network": "eip155:8453",
+      "payTo": "0xA6E10884a70D00DE8b8c5dfF0a2a9B1a821cE074",
+      "scheme": "exact"
+    }
+  ],
+  "error": "Payment required",
+  "extensions": {
+    "bazaar": {
+      "info": {
+        "input": {
+          "method": "GET",
+          "pathParams": {
+            "symbol": "BTC"
+          },
+          "type": "http"
+        },
+        "output": {
+          "example": {
+            "average_compound_note": "average_compound depends on the row's window column. window \"72h-hl24\" (from 2026-10-04): the recency-weighted score over headlines from the last 72 hours (weight halves every 24 hours), the same number the live API returns; unweighted_compound_72h, effective_sample_size and newest_headline_age_hours are filled in. window null (earlier rows): the plain average over every item the feeds held, however old, and those four columns are null.",
+            "count": 2,
+            "end": "2026-10-04T02:00:00Z",
+            "methodology": "Rows before 2026-10-03 were scored with substring headline matching (matcher null); later rows with whole-word matching (matcher \"whole_word\"). Drivers (the top headlines behind a reading) are stored from 2026-10-03 on; older rows have drivers null. See /validation for the methodology notes.",
+            "recording": "Readings are recorded live at the top of every UTC hour and never backfilled. An hour the logger missed stays missing.",
+            "rows": [
+              {
+                "average_compound": 0.1123,
+                "drivers": null,
+                "effective_sample_size": null,
+                "fear_greed_value": 41,
+                "matcher": "whole_word",
+                "newest_headline_age_hours": null,
+                "observed_at": "2026-10-04T00:00:02.513104+00:00",
+                "sample_size": 52,
+                "unweighted_compound_72h": null,
+                "window": null
+              },
+              {
+                "average_compound": 0.1388,
+                "drivers": [
+                  {
+                    "effect": 0.0221,
+                    "link": "https://example.com/news/bitcoin-etf-inflows",
+                    "published": "2026-10-03T22:05:00Z",
+                    "score": 0.6249,
+                    "source": "CoinDesk",
+                    "title": "Bitcoin ETFs log fifth straight day of inflows",
+                    "weight": 0.8963
+                  }
+                ],
+                "effective_sample_size": 31.7,
+                "fear_greed_value": 41,
+                "matcher": "whole_word",
+                "newest_headline_age_hours": 1.2,
+                "observed_at": "2026-10-04T01:00:02.209871+00:00",
+                "sample_size": 55,
+                "unweighted_compound_72h": 0.1012,
+                "window": "72h-hl24"
+              }
+            ],
+            "start": "2026-10-04T00:00:00Z",
+            "symbol": "BTC"
+          },
+          "type": "json"
+        }
+      },
+      "routeTemplate": "/history/:symbol",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "DELETE"
+                ],
+                "type": "string"
+              },
+              "pathParams": {
+                "properties": {
+                  "symbol": {
+                    "description": "Uppercase ticker symbol in the URL path, e.g. BTC in /history/BTC. See /archive for which symbols are logged.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              "queryParams": {
+                "properties": {
+                  "end": {
+                    "description": "ISO 8601 end time, exclusive. Default: now. At most 30 days after start.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "ISO 8601 start time (UTC if no offset). Default: end minus 7 days.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "const": "http",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "method"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "properties": {
+              "example": {
+                "properties": {
+                  "average_compound_note": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer"
+                  },
+                  "end": {
+                    "type": "string"
+                  },
+                  "methodology": {
+                    "type": "string"
+                  },
+                  "recording": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "items": {
+                      "properties": {
+                        "average_compound": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "drivers": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "items": {
+                                "properties": {
+                                  "effect": {
+                                    "type": "number"
+                                  },
+                                  "link": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "published": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "score": {
+                                    "type": "number"
+                                  },
+                                  "source": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "weight": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "source",
+                                  "link",
+                                  "published",
+                                  "score"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 5,
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "effective_sample_size": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "fear_greed_value": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "matcher": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "newest_headline_age_hours": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "observed_at": {
+                          "type": "string"
+                        },
+                        "sample_size": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "unweighted_compound_72h": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "window": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "observed_at",
+                        "average_compound",
+                        "matcher",
+                        "drivers"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "symbol": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "symbol",
+                  "start",
+                  "end",
+                  "count",
+                  "rows"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "resource": {
+    "description": "Historical crypto sentiment API: hourly news-sentiment readings for 24 coins, recorded live every UTC hour and never backfilled. Rows: observed_at, score (-1 to 1), sample size, Fear & Greed value and the top 3 headlines. Use when an agent needs past readings, e.g. to backtest or compare with price. Query start/end as ISO 8601: default last 7 days, max 30 per call. An unlogged coin, an invalid range, or a range with no readings or no headlines is refused and not charged. Coverage: /archive.",
+    "mimeType": "application/json",
+    "serviceName": "Crypto Sentiment API",
+    "tags": [
+      "crypto",
+      "sentiment",
+      "news",
+      "trading",
+      "bitcoin"
+    ],
+    "url": "https://crypto-sentiment-x402.onrender.com/history/BTC"
+  },
+  "x402Version": 2
+}

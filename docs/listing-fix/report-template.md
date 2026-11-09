@@ -1,3 +1,19 @@
+<!-- Rubric: read the seller's 402 and discovery metadata against each item
+before writing. Delete this note from the delivered report.
+- description: a "Use when ..." line, under 500 characters
+- serviceName
+- 1 to 5 tags, most important first
+- input and output schema, with an example
+- resource URL: full https URL; host and path match the URL the 402 was
+  served from (check resource_url_match)
+- payment options: at least one standard "exact" option, not only Circle
+  Gateway ones (extra.name "GatewayWalletBatched", also scheme "exact")
+  (check standard_payment_option)
+- PAYMENT-REQUIRED header present
+- extensions placement
+- probe response
+-->
+
 # Listing Fix report: {{service name}}
 
 Service: {{origin URL}}

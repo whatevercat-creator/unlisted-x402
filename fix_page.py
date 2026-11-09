@@ -51,7 +51,7 @@ TERMS_URL = "https://unlisted.sh/fix#terms"
 PRICING_URL = "https://unlisted.sh/fix#pricing"
 GUIDE_URL = "https://unlisted.sh/guide"
 FORGE_ALONE_URL = "https://forgealone.com"
-FIX_UPDATED_ISO = "2026-11-06"
+FIX_UPDATED_ISO = "2026-11-09"
 MAILTO = f"mailto:{CONTACT_EMAIL}?subject=Listing%20Fix"
 
 # Unlisted's automated checks, as the code defines them (tests compare this
@@ -62,6 +62,8 @@ CHECKS_WITHOUT_PAYMENT = (
     "payment_required_header",
     "resource_present",
     "scheme_mismatch",
+    "resource_url_match",
+    "standard_payment_option",
     "bazaar_extension",
     "extensions_placement",
     "description_length",

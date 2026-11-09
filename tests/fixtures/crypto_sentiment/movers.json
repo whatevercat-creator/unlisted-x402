@@ -1,0 +1,161 @@
+{
+  "accepts": [
+    {
+      "amount": "20000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "extra": {
+        "name": "USD Coin",
+        "version": "2"
+      },
+      "maxTimeoutSeconds": 300,
+      "network": "eip155:8453",
+      "payTo": "0xA6E10884a70D00DE8b8c5dfF0a2a9B1a821cE074",
+      "scheme": "exact"
+    }
+  ],
+  "error": "Payment required",
+  "extensions": {
+    "bazaar": {
+      "info": {
+        "input": {
+          "method": "GET",
+          "type": "http"
+        },
+        "output": {
+          "example": {
+            "coins_considered": 24,
+            "coins_ranked": 18,
+            "computed_at": "2026-11-09T20:00:00+00:00",
+            "lookback_hours": 24.0,
+            "movers_down": [
+              {
+                "current_label": "bearish",
+                "current_score": -0.1,
+                "delta": -0.35,
+                "previous_observed_at": "2026-11-08T14:00:02+00:00",
+                "previous_score": 0.25,
+                "symbol": "ETH"
+              }
+            ],
+            "movers_up": [
+              {
+                "current_label": "bullish",
+                "current_score": 0.42,
+                "delta": 0.37,
+                "previous_observed_at": "2026-11-08T14:00:02+00:00",
+                "previous_score": 0.05,
+                "symbol": "SOL"
+              }
+            ],
+            "window": "72h-hl24-v2"
+          },
+          "type": "json"
+        }
+      },
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "DELETE"
+                ],
+                "type": "string"
+              },
+              "queryParams": {
+                "properties": {
+                  "limit": {
+                    "description": "Max coins in movers_up and movers_down each. Default 10, max 24.",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "const": "http",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "method"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "properties": {
+              "example": {
+                "properties": {
+                  "coins_considered": {
+                    "type": "integer"
+                  },
+                  "coins_ranked": {
+                    "type": "integer"
+                  },
+                  "computed_at": {
+                    "type": "string"
+                  },
+                  "lookback_hours": {
+                    "type": "number"
+                  },
+                  "movers_down": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "movers_up": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "window": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "movers_up",
+                  "movers_down",
+                  "coins_ranked",
+                  "coins_considered",
+                  "computed_at"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "resource": {
+    "description": "Crypto sentiment movers: ranks 24 coins by news-sentiment shift over ~24h, current reading (refreshed hourly, see computed_at) vs. the archived reading ~24h earlier. Returns movers_up/movers_down (symbol, current_score, previous_score, delta). Use when an agent scans for what moved instead of looping /sentiment over every coin. Coins without enough news now and ~24h ago are left out, not guessed at. If no coin can be ranked, the call is refused and not charged.",
+    "mimeType": "application/json",
+    "serviceName": "Crypto Sentiment API",
+    "tags": [
+      "crypto",
+      "sentiment",
+      "news",
+      "trading",
+      "bitcoin"
+    ],
+    "url": "https://crypto-sentiment-x402.onrender.com/movers"
+  },
+  "x402Version": 2
+}
