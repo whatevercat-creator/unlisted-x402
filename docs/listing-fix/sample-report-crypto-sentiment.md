@@ -1,4 +1,4 @@
-Unlisted ran 15 checks when this report was written; it now runs 16 (payment_required_header was added on Nov 6, 2026).
+Unlisted ran 15 checks when this report was written; it now runs 18 (payment_required_header was added on Nov 6, 2026, and resource_url_match and standard_payment_option on Nov 9, 2026).
 
 # Listing Fix report: Crypto Sentiment API
 

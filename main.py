@@ -204,8 +204,9 @@ _DIAGNOSE_EXAMPLE_REPORT: dict[str, Any] = {
             "confidence": "facilitator-side",
         },
     ],
-    "verdict": "No issues found in the 11 schema/config check(s) (PAYMENT-REQUIRED header, "
-    "resource, scheme match, bazaar extension and its placement, description length, "
+    "verdict": "No issues found in the 13 schema/config check(s) (PAYMENT-REQUIRED header, "
+    "resource, scheme match, resource URL match, standard payment option, bazaar extension "
+    "and its placement, description length, "
     "external schema refs, tag count, "
     "description wording, and route template and example-input probe when reported). This "
     "doesn't guarantee a Bazaar listing -- settlement must still succeed and actually echo "

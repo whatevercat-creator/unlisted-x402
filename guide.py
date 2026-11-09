@@ -17,8 +17,8 @@ from html import escape
 
 import fix_page
 
-GUIDE_UPDATED = "November 7, 2026"
-GUIDE_UPDATED_ISO = "2026-11-07"
+GUIDE_UPDATED = "November 9, 2026"
+GUIDE_UPDATED_ISO = "2026-11-09"
 # When the open-issues sentence was last checked. Separate from GUIDE_UPDATED:
 # bumping the page date must not re-date that claim.
 OPEN_ISSUES_CHECKED = "October 4, 2026"
@@ -46,6 +46,8 @@ REFERENCED_CHECK_IDS = (
     "extension_response",
     "search_visibility",
     "payment_required_header",
+    "resource_url_match",
+    "standard_payment_option",
 )
 
 _STYLE = """
@@ -136,6 +138,8 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <li><a href="#collapsed">Several URLs collapse into one entry</a></li>
 <li><a href="#dropped">The route dropped out after 30 days without a settlement</a></li>
 <li><a href="#header-missing">The 402 body is right but the PAYMENT-REQUIRED header is missing</a></li>
+<li><a href="#url-mismatch">resource.url names a different URL than the one requested</a></li>
+<li><a href="#gateway-only">Only Circle Gateway payment options are offered</a></li>
 </ol>
 <p style="margin:10px 0 0">None of them fit? See <a href="#stuck-processing">accepted as &ldquo;processing&rdquo;, never indexed</a>. Listed but not featured? See <a href="#not-curated">indexed, but not curated (<code>enriched: false</code>)</a>. Listed but hard to find? See <a href="#listing-behavior">how a listing behaves</a>.</p></div>
 
@@ -151,6 +155,8 @@ def guide_page(*, price: str, paid_price: str) -> str:
 <tr><td>CDP&#x27;s validation fails its <code>payment_required_header</code> check</td><td><a href="#header-missing">16</a></td></tr>
 <tr><td>CDP's facilitator answered <code>rejected</code></td><td><a href="#extension-missing">3</a> (read <code>rejectedReason</code>)</td></tr>
 <tr><td>Valid challenge, settled through CDP, status &ldquo;processing&rdquo;, still not listed</td><td><a href="#probe-rejected">13</a> and <a href="#schema-refs">10</a>, then <a href="#stuck-processing">the open reports</a></td></tr>
+<tr><td>The decoded challenge&#x27;s <code>resource.url</code> has a different host or path than the URL you called</td><td><a href="#url-mismatch">17</a></td></tr>
+<tr><td>Every <code>accepts</code> entry has <code>extra.name: "GatewayWalletBatched"</code></td><td><a href="#gateway-only">18</a></td></tr>
 <tr><td>Was listed, now gone</td><td><a href="#dropped">15</a></td></tr>
 <tr><td>Several of your URLs show up as one entry</td><td><a href="#collapsed">14</a></td></tr>
 <tr><td>Listed, but agentic.market shows <code>enriched: false</code></td><td><a href="#not-curated">Not curated</a></td></tr>
@@ -284,6 +290,20 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Send the same JSON, base64-encoded, in a <code>PAYMENT-REQUIRED</code> header, and keep it in the body too (cause 8). Current x402 SDKs set the header for you. Hand-rolled 402 responses often leave it out. Then make a new settlement through CDP.</p>
 {_check_box("payment_required_header", "the Check fails when an x402 v2 402 has no <code>PAYMENT-REQUIRED</code> header, even when the body is right, and when the header is there but doesn't decode to base64 JSON with payment options in <code>accepts</code>. It skips x402 v1 challenges, which carry the challenge in the body and have no such header.")}
 
+<h2 id="url-mismatch">17. <code>resource.url</code> names a different URL than the one requested</h2>
+<h3>Symptom</h3>
+<p>You call <code>https://api.example.com/data</code>, but the decoded challenge says <code>resource.url</code> is another host or path: an internal hostname, <code>localhost</code>, your platform&#x27;s default domain instead of your own, or a different path. Buyers and catalogs that use <code>resource.url</code> go to the wrong place. In a weekly public x402 health report (Fizzl, week ending Nov 9, 2026), 788 resources named another URL in their 402 than the one requested. Nothing documented says the Bazaar drops a route for this, so Unlisted reports it as a warning.</p>
+<h3>Fix</h3>
+<p>Build <code>resource.url</code> from your public origin: the https URL buyers actually call, with the same host and path. Behind a TLS proxy, trust the proxy&#x27;s forwarded headers so the URL stays https and keeps the public host (see cause 6 for uvicorn and Express), or set your public base URL in config. A trailing slash, a default port, the query string and a route parameter such as <code>:symbol</code> or <code>{{symbol}}</code> in place of the real value don&#x27;t count as a mismatch.</p>
+{_check_box("resource_url_match", "the Check compares the host and path of <code>resource.url</code> with the URL your 402 was served from, after redirects. The http/https part is cause 6.")}
+
+<h2 id="gateway-only">18. Only Circle Gateway payment options are offered</h2>
+<h3>Symptom</h3>
+<p>Every entry in your challenge&#x27;s <code>accepts</code> is a Circle Gateway option, marked by <code>extra.name: "GatewayWalletBatched"</code>. Gateway options are paid from a Gateway balance that standard x402 clients don&#x27;t have, so those agents find no option they can pay. Gateway options also use scheme <code>exact</code>, so looking at the scheme name alone won&#x27;t show this: it&#x27;s <code>extra.name</code> that marks them. In a weekly public x402 health report (Fizzl, week ending Nov 9, 2026), 1,502 resources offered only Circle Gateway options.</p>
+<h3>Fix</h3>
+<p>If standard x402 agents should pay too, add a plain <code>exact</code> option next to the Gateway one: same network and price, with the token&#x27;s own EIP-712 name and version in <code>extra</code> (for USDC on Base, <code>"USD Coin"</code> and <code>"2"</code>) instead of <code>GatewayWalletBatched</code>. Keep the Gateway option for buyers who have a Gateway balance. Circle&#x27;s docs describe a 402 that lists both as the server &ldquo;correctly offering both payment methods&rdquo;.</p>
+{_check_box("standard_payment_option", "the Check warns when no <code>accepts</code> entry is a standard <code>exact</code> option and at least one is a Circle Gateway option.")}
+
 <h2 id="stuck-processing">If none of these fit: accepted as &ldquo;processing&rdquo;, never indexed</h2>
 <h3>Symptom</h3>
 <p>Your challenge is valid, a payment settled through CDP's facilitator, and the facilitator answered with <code>bazaar.status: "processing"</code>. CDP's own validation says the route would be accepted. Days later it still isn't in the catalog.</p>
@@ -291,7 +311,7 @@ FORWARDED_ALLOW_IPS=*</code></pre>
 <p>Coinbase's docs say <code>processing</code> means the metadata was accepted and is being cataloged asynchronously, and that it doesn't confirm indexing will succeed. Routes that do get indexed see it too, so it tells you nothing either way.</p>
 <p>Two of the reports have since been answered by a Coinbase contributor, and both turned out to be fixable on the seller's side: {_CDP_830} (CDP's probe got a 409, cause 13) and {_CDP_835} (an external <code>$id</code> in the schema, cause 10). As of {OPEN_ISSUES_CHECKED}, <a href="https://github.com/x402-foundation/x402/issues/3266">x402 #3266</a> and <a href="https://github.com/x402-foundation/x402/issues/3281">x402 #3281</a> are still open with no maintainer answer, and there's no confirmed fix for them.</p>
 <h3>What to try</h3>
-<p>Rule out causes 1 to 16 first, especially 13 and 10, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
+<p>Rule out causes 1 to 18 first, especially 13 and 10, since several of them produce the same symptom. Then make one fresh settlement through CDP after your last change: indexing can't be retriggered on an existing settlement, and a testnet settlement works (cause 1). If it's still missing after a few days, add your route and settlement details to one of the open issues above. More reports make it easier for CDP to find the pattern.</p>
 <div class="card check"><b>Check it with Unlisted:</b> the report's <code>bazaar_index_status</code> check tells you whether you're in this state: not indexed, but CDP would accept the route. Paid mode can make a fresh settlement for you. Unlisted can't make CDP index a route, and it won't claim to.</div>
 
 <h2 id="not-curated">Indexed, but not curated (<code>enriched: false</code>)</h2>
@@ -367,6 +387,8 @@ def llms_txt(*, price: str, paid_price: str) -> str:
 - payment_required_header: for x402 v2, fails when the 402 has no PAYMENT-REQUIRED header (even if the body is right) or the header doesn't decode to base64 JSON with payment options. CDP's validator and the Bazaar indexer read the header. Skipped for x402 v1.
 - extensions_placement: fails when the Bazaar block is inside accepts[0] instead of at the top level of the 402 body next to accepts, where the x402 v2 spec puts it. bazaar_extension still checks the block's contents.
 - probe_response: sends the declaration's example input (method, path or query params, example body) to the target unpaid, as CDP's indexer does after a settlement, and fails if the answer isn't a 402, which means validation runs before the paywall. Skipped when there's no usable example.
+- resource_url_match: warns when resource.url names a different host or path than the URL the 402 was served from (after redirects), or isn't a full URL. Ignores a trailing slash, default ports, the query string, and :name or {{name}} segments, which match any one path segment. The http/https part is scheme_mismatch.
+- standard_payment_option: warns when no accepts entry is a standard "exact" option and at least one is a Circle Gateway option (extra.name "GatewayWalletBatched", which also uses scheme "exact"). Standard x402 clients can't pay from a Gateway balance. Skipped when the 402 has no accepts.
 - tag_count: warns when resource.tags has more than 5 tags. CDP keeps only the first 5, so put the most important first.
 - description_screening: warns (never fails) when the description or tags contain wording that reads like instructions to an AI agent. A small heuristic of Unlisted's own, not CDP's screening.
 - listed_price_match: when the route is in the Bazaar listing, warns if the live price is more than 2x the listed price, or the payTo, network or asset differ. Info when it isn't listed.

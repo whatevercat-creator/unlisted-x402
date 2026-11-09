@@ -62,6 +62,8 @@ CHECKS_WITHOUT_PAYMENT = (
     "payment_required_header",
     "resource_present",
     "scheme_mismatch",
+    "resource_url_match",
+    "standard_payment_option",
     "bazaar_extension",
     "extensions_placement",
     "description_length",

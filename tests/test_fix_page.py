@@ -344,7 +344,7 @@ def test_check_count_matches_the_code():
     in_code.discard("multiple_accepts_noted")  # a note, not a check
     listed = set(fix_page.CHECKS_WITHOUT_PAYMENT) | set(fix_page.CHECKS_NEEDING_PAYMENT)
     assert in_code == listed
-    assert fix_page.CHECK_COUNT == 16
+    assert fix_page.CHECK_COUNT == 18
     assert set(fix_page.CHECKS_NEEDING_PAYMENT) == {"settlement_echo", "extension_response"}
 
 

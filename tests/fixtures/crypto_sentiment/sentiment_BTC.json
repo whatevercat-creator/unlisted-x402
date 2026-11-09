@@ -1,0 +1,245 @@
+{
+  "accepts": [
+    {
+      "amount": "10000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "extra": {
+        "name": "USD Coin",
+        "version": "2"
+      },
+      "maxTimeoutSeconds": 300,
+      "network": "eip155:8453",
+      "payTo": "0xA6E10884a70D00DE8b8c5dfF0a2a9B1a821cE074",
+      "scheme": "exact"
+    }
+  ],
+  "error": "Payment required",
+  "extensions": {
+    "bazaar": {
+      "info": {
+        "input": {
+          "method": "GET",
+          "pathParams": {
+            "symbol": "BTC"
+          },
+          "type": "http"
+        },
+        "output": {
+          "example": {
+            "drivers": [
+              {
+                "effect": 0.0263,
+                "link": "https://example.com/news/bitcoin-etf-inflows",
+                "published": "2026-10-03T14:05:00Z",
+                "score": 0.6249,
+                "source": "CoinDesk",
+                "title": "Bitcoin ETFs log fifth straight day of inflows",
+                "weight": 0.9288
+              },
+              {
+                "effect": -0.0222,
+                "link": "https://example.com/news/exchange-hack",
+                "published": "2026-10-03T12:40:00Z",
+                "score": -0.5719,
+                "source": "The Block",
+                "title": "Exchange hack drains $40M as bitcoin dips",
+                "weight": 0.8572
+              },
+              {
+                "effect": 0.0161,
+                "link": "https://example.com/news/record-hashrate",
+                "published": "2026-10-03T11:15:00Z",
+                "score": 0.4404,
+                "source": "Decrypt",
+                "title": "Bitcoin miners report record hashrate",
+                "weight": 0.8087
+              }
+            ],
+            "drivers_summary": "2 of the top 3 headlines are positive, 1 is negative.",
+            "name": "Bitcoin",
+            "overall_sentiment": {
+              "average_compound": 0.21,
+              "effective_sample_size": 29.4,
+              "label": "bullish",
+              "newest_headline_age_hours": 1.6,
+              "sample_size": 38,
+              "unweighted_compound_72h": 0.17,
+              "window": "72h-hl24-v2"
+            },
+            "symbol": "BTC"
+          },
+          "type": "json"
+        }
+      },
+      "routeTemplate": "/sentiment/:symbol",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "DELETE"
+                ],
+                "type": "string"
+              },
+              "pathParams": {
+                "properties": {
+                  "symbol": {
+                    "description": "Uppercase ticker symbol in the URL path, e.g. BTC in /sentiment/BTC",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "symbol"
+                ],
+                "type": "object"
+              },
+              "queryParams": {
+                "properties": {},
+                "type": "object"
+              },
+              "type": {
+                "const": "http",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "method"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "properties": {
+              "example": {
+                "properties": {
+                  "drivers": {
+                    "items": {
+                      "properties": {
+                        "effect": {
+                          "type": "number"
+                        },
+                        "link": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "published": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "score": {
+                          "type": "number"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "weight": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "source",
+                        "link",
+                        "published",
+                        "score"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 5,
+                    "type": "array"
+                  },
+                  "drivers_summary": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "overall_sentiment": {
+                    "properties": {
+                      "average_compound": {
+                        "type": "number"
+                      },
+                      "effective_sample_size": {
+                        "type": "number"
+                      },
+                      "label": {
+                        "enum": [
+                          "bullish",
+                          "bearish",
+                          "neutral",
+                          "insufficient recent news"
+                        ],
+                        "type": "string"
+                      },
+                      "newest_headline_age_hours": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "sample_size": {
+                        "type": "integer"
+                      },
+                      "unweighted_compound_72h": {
+                        "type": "number"
+                      },
+                      "window": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "symbol": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "symbol",
+                  "overall_sentiment"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "resource": {
+    "description": "Crypto news sentiment API for 24 coins (BTC, ETH, SOL, XRP, DOGE and more): bullish/bearish/neutral label, score -1 to 1, sample size and the top 5 headlines behind it (title, link), from 9 crypto news RSS outlets plus the Fear & Greed Index, last 72h. Use when an agent needs a current sentiment reading before a trade, alert or research step; e.g. /sentiment/BTC. An unsupported coin (404) or too little recent news (422) is refused and not charged.",
+    "mimeType": "application/json",
+    "serviceName": "Crypto Sentiment API",
+    "tags": [
+      "crypto",
+      "sentiment",
+      "news",
+      "trading",
+      "bitcoin"
+    ],
+    "url": "https://crypto-sentiment-x402.onrender.com/sentiment/BTC"
+  },
+  "x402Version": 2
+}

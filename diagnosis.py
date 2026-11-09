@@ -78,7 +78,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 class Status(str, Enum):
@@ -436,6 +436,190 @@ def check_resource_present(
         status=Status.PASS,
         detail=f"`resource` present: {resource_url}",
         confidence=Confidence.SERVER,
+    )
+
+
+_DEFAULT_PORTS = {"https": 443, "http": 80}
+# A route-template path segment: ":symbol" or "{symbol}".
+_TEMPLATE_SEGMENT = re.compile(r"^(?::[A-Za-z_][\w-]*|\{[^/{}]+\})$")
+
+
+def _explicit_port(parsed) -> Optional[int]:
+    """The URL's port, or None when it's absent or the scheme's default
+    (so `https://h:443/x` and `https://h/x` compare equal)."""
+    port = parsed.port  # raises ValueError on a malformed port
+    if port is None or port == _DEFAULT_PORTS.get(parsed.scheme.lower()):
+        return None
+    return port
+
+
+def _path_segments(path: str) -> list[str]:
+    """Path segments with percent-encoding decoded and any trailing slash
+    ignored; the root path is an empty list."""
+    trimmed = path.rstrip("/")
+    return [unquote(s) for s in trimmed.split("/")[1:]] if trimmed else []
+
+
+def _paths_match(resource_path: str, requested_path: str) -> bool:
+    advertised = _path_segments(resource_path)
+    actual = _path_segments(requested_path)
+    if len(advertised) != len(actual):
+        return False
+    for a, b in zip(advertised, actual):
+        if _TEMPLATE_SEGMENT.match(a):
+            if not b:
+                return False
+        elif a != b:
+            return False
+    return True
+
+
+def check_resource_url_match(
+    challenge: dict[str, Any], accepts: list[dict[str, Any]], final_url: str
+) -> CheckResult:
+    """Does `resource.url` name the URL the 402 was actually served from
+    (the final URL, after any redirects)? Compares host (case-insensitive,
+    default ports ignored) and path (trailing slash and percent-encoding
+    ignored; a `:name` or `{name}` segment matches any one non-empty
+    segment). The scheme is left to scheme_mismatch and the query string
+    is ignored. WARN, not FAIL: nothing documented says the Bazaar drops a
+    route for this, but buyers and catalogs are sent to the wrong URL."""
+    resource_url = _resource_url(_resource_value(challenge, accepts))
+    if not resource_url:
+        return CheckResult(
+            check_id="resource_url_match",
+            status=Status.SKIP,
+            detail="No `resource` URL to compare against (see resource_present check)",
+        )
+
+    fix = (
+        "Build `resource.url` from your public origin: the https URL buyers "
+        "actually call, with the same host and path, not the host or path your "
+        "app sees internally. Behind a TLS proxy (Render, Railway, Fly, Heroku, "
+        "nginx, a load balancer), set your server to trust the proxy's forwarded "
+        "headers so the URL stays https and keeps the public host, or set your "
+        "public base URL in config."
+    )
+
+    try:
+        advertised = urlparse(resource_url)
+        actual = urlparse(final_url)
+        advertised_port = _explicit_port(advertised)
+        actual_port = _explicit_port(actual)
+    except ValueError:
+        return CheckResult(
+            check_id="resource_url_match",
+            status=Status.SKIP,
+            detail=f"Could not parse resource URL {resource_url!r}",
+        )
+
+    if not advertised.netloc:
+        return CheckResult(
+            check_id="resource_url_match",
+            status=Status.WARN,
+            detail=(
+                f"`resource.url` ({resource_url!r}) is not a full URL; the 402 was "
+                f"served from {final_url}. Buyers and catalogs need the full https URL."
+            ),
+            fix=fix,
+            confidence=Confidence.SERVER,
+        )
+
+    problems = []
+    advertised_host = (advertised.hostname or "").rstrip(".")
+    actual_host = (actual.hostname or "").rstrip(".")
+    if advertised_host != actual_host or advertised_port != actual_port:
+        problems.append("host")
+    if not _paths_match(advertised.path, actual.path):
+        problems.append("path")
+
+    if problems:
+        return CheckResult(
+            check_id="resource_url_match",
+            status=Status.WARN,
+            detail=(
+                f"`resource.url` ({resource_url}) names a different "
+                f"{' and '.join(problems)} than the URL the 402 was served from "
+                f"({final_url}). Buyers and catalogs that use `resource.url` "
+                "are sent to the wrong place."
+            ),
+            fix=fix,
+            confidence=Confidence.SERVER,
+        )
+
+    return CheckResult(
+        check_id="resource_url_match",
+        status=Status.PASS,
+        detail=f"`resource.url` matches the URL the 402 was served from ({final_url})",
+        confidence=Confidence.SERVER,
+    )
+
+
+# Circle Gateway marks its batched options with this EIP-712 domain name in
+# `extra.name`. Circle's docs: Gateway options use scheme "exact" too, so the
+# scheme alone can't tell them apart (developers.circle.com, Gateway
+# Nanopayments x402 seller how-to and seller quickstart).
+GATEWAY_EXTRA_NAME = "GatewayWalletBatched"
+
+
+def _is_gateway_option(entry: dict[str, Any]) -> bool:
+    extra = entry.get("extra")
+    return isinstance(extra, dict) and extra.get("name") == GATEWAY_EXTRA_NAME
+
+
+def check_standard_payment_option(challenge: dict[str, Any]) -> CheckResult:
+    """Is there at least one `accepts[]` option a standard x402 client can
+    pay (scheme "exact", not a Circle Gateway option)? WARN when the only
+    options are Gateway ones, which are paid from a Gateway balance that
+    standard clients don't have. Reads the raw `accepts`, not
+    extract_accepts(), so a 402 without accepts is skipped, not guessed at."""
+    raw = challenge.get("accepts")
+    entries = [a for a in raw if isinstance(a, dict)] if isinstance(raw, list) else []
+    if not entries:
+        return CheckResult(
+            check_id="standard_payment_option",
+            status=Status.SKIP,
+            detail="The 402 has no `accepts` options to check",
+        )
+
+    gateway = [a for a in entries if _is_gateway_option(a)]
+    standard = [a for a in entries if a.get("scheme") == "exact" and not _is_gateway_option(a)]
+
+    if standard:
+        detail = f"{len(standard)} standard `exact` option(s) offered"
+        if gateway:
+            detail += f", next to {len(gateway)} Circle Gateway option(s)"
+        return CheckResult(
+            check_id="standard_payment_option",
+            status=Status.PASS,
+            detail=detail,
+            confidence=Confidence.SERVER,
+        )
+
+    if gateway:
+        return CheckResult(
+            check_id="standard_payment_option",
+            status=Status.WARN,
+            detail=(
+                f"Every `exact` option is a Circle Gateway option (`extra.name`: "
+                f"{GATEWAY_EXTRA_NAME!r}), paid from a Gateway balance that standard "
+                "x402 clients don't have. Gateway options also use scheme `exact`, "
+                "so the scheme alone doesn't show this."
+            ),
+            fix=(
+                "If standard x402 agents should pay too, add a plain `exact` option "
+                "next to the Gateway one: same network and price, with the token's "
+                "own EIP-712 name and version in `extra` (for USDC on Base, "
+                "\"USD Coin\" and \"2\") instead of GatewayWalletBatched. Keep the "
+                "Gateway option for buyers who have a Gateway balance."
+            ),
+            confidence=Confidence.SERVER,
+        )
+
+    return CheckResult(
+        check_id="standard_payment_option",
+        status=Status.SKIP,
+        detail="No `exact` or Circle Gateway option in `accepts`; not covered by this check",
     )
 
 
@@ -914,6 +1098,8 @@ def run_checks(challenge: dict[str, Any], final_url: str) -> list[CheckResult]:
     results = [
         check_resource_present(challenge, accepts),
         check_scheme_mismatch(challenge, accepts, final_url),
+        _guarded("resource_url_match", check_resource_url_match, challenge, accepts, final_url),
+        _guarded("standard_payment_option", check_standard_payment_option, challenge),
         check_bazaar_extension(challenge, accepts),
         check_extensions_placement(challenge, accepts),
         check_description_length(challenge, accepts),
@@ -1025,7 +1211,8 @@ def summarize(checks: list[CheckResult]) -> str:
         schema_check_count = len([c for c in checks if c.check_id not in _NON_SCHEMA_CHECK_IDS])
         sentence = (
             f"No issues found in the {schema_check_count} schema/config check(s) "
-            "(PAYMENT-REQUIRED header, resource, scheme match, bazaar extension and its "
+            "(PAYMENT-REQUIRED header, resource, scheme match, resource URL match, "
+            "standard payment option, bazaar extension and its "
             "placement, description length, "
             "external schema refs, tag count, description wording, and route template and "
             "example-input probe when reported)."
