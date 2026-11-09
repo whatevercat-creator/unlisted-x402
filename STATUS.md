@@ -1,11 +1,22 @@
 # Status
 
-Last updated: 2026-11-06. Facts come from the repo unless marked.
+Last updated: 2026-11-09. Facts come from the repo unless marked.
 "(unverified)" = not confirmed from the repo or a live read.
 
 ## What's live
 
-- **master at the `step2-nov6` merge**, pushed 2026-11-06 (Eastern), on
+- **master at the `two-checks-nov9` merge**, pushed 2026-11-09 (Eastern).
+  Find the hash with `git log --merges -1 --grep two-checks-nov9`. It added:
+  - Two new no-payment checks, both WARN only: `resource_url_match`
+    (resource.url host/path vs the URL the 402 was served from) and
+    `standard_payment_option` (only Circle Gateway options, i.e.
+    `extra.name` "GatewayWalletBatched", which also use scheme `exact`).
+  - 18 automated checks in all (16 no-payment, 2 need a payment); /fix
+    shows 18.
+  - Guide causes 17 (resource.url mismatch) and 18 (Gateway-only), citing
+    the Fizzl weekly x402 health report, week ending Nov 9, 2026.
+  - Unlisted's own unpaid 402 unchanged (byte-identical).
+- Earlier: **`step2-nov6` merge**, pushed 2026-11-06 (Eastern), on
   top of d52df0d ("Merge branch 'header-check'"). Find the hash with
   `git log --merges -1 --grep step2-nov6`. It added:
   - `next_step` line in /diagnose reports that have a failed check.
@@ -29,7 +40,7 @@ Last updated: 2026-11-06. Facts come from the repo unless marked.
 - `STRIPE_LINKS_SET = True`: both Stripe links are set, so the buy buttons
   are live.
 - How many founding spots are taken: not in the repo (unverified).
-- `/fix` page dated `FIX_UPDATED_ISO = 2026-11-06`.
+- `/fix` page dated `FIX_UPDATED_ISO = 2026-11-09`.
 
 ## Open items
 
