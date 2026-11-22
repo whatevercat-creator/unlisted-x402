@@ -4,3 +4,5 @@ __pycache__/
 Claude outputs/
 .baseline402/
 .preview/
+# Claude Code local settings (can hold approved commands with secrets)
+.claude/settings.local.json
