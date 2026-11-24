@@ -31,8 +31,8 @@ STRIPE_LINKS_SET = True
 
 # Founding offer: open until the first 3 clients have bought it.
 FOUNDING_OPEN = True
-# The name on the buyer's card statement (confirm in Stripe before deploy).
-STATEMENT_NAME = "CRYPTO SENTIMENT"
+# The name on the buyer's card statement (confirmed in the Stripe dashboard 2026-11-23).
+STATEMENT_NAME = "FORGE ALONE"
 OPENS_LABEL = "Opens Thu Nov 5"
 
 PRICE_USD = 49
@@ -51,7 +51,10 @@ TERMS_URL = "https://unlisted.sh/fix#terms"
 PRICING_URL = "https://unlisted.sh/fix#pricing"
 GUIDE_URL = "https://unlisted.sh/guide"
 FORGE_ALONE_URL = "https://forgealone.com"
-FIX_UPDATED_ISO = "2026-11-09"
+# Footer links on /, /guide, /fix and /fix/sample (main.py and guide.py use these too).
+FORGE_ALONE_PRIVACY_URL = "https://forgealone.com/privacy"
+FORGE_ALONE_TERMS_URL = "https://forgealone.com/terms"
+FIX_UPDATED_ISO = "2026-11-24"
 MAILTO = f"mailto:{CONTACT_EMAIL}?subject=Listing%20Fix"
 
 # Unlisted's automated checks, as the code defines them (tests compare this
@@ -97,8 +100,8 @@ NEVER_ASK_FOR = (
 )
 
 STATEMENT_LINE = (
-    f"Your card statement shows {STATEMENT_NAME}. Our payment account is shared with our "
-    "Crypto Sentiment API, also run by Forge Alone."
+    f"Your card statement shows {STATEMENT_NAME}. Forge Alone runs Unlisted and the "
+    "Crypto News Sentiment API."
 )
 
 # Terms, in the order shown at /fix#terms. (lead, text)
@@ -628,7 +631,7 @@ def fix_page(*, price: str, paid_price: str) -> str:
 {terms_html}
 </div>
 
-<footer><a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a> &middot; <a href="/guide">Free guide</a> &middot; <a href="/llms.txt">For AI agents: llms.txt</a><br>
+<footer><a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a> &middot; <a href="/guide">Free guide</a> &middot; <a href="/llms.txt">For AI agents: llms.txt</a> &middot; <a href="{FORGE_ALONE_PRIVACY_URL}">Privacy</a> &middot; <a href="{FORGE_ALONE_TERMS_URL}">Terms</a><br>
 Unlisted isn&#x27;t affiliated with Coinbase. Built by <a href="{FORGE_ALONE_URL}">Forge Alone</a>.</footer>
 </main></body></html>"""
 
@@ -676,7 +679,7 @@ def sample_page() -> str:
 <nav><a href="/">unlisted.sh</a> &rsaquo; <a href="/fix">Listing Fix</a> &rsaquo; sample</nav>
 <p class="label">{escape(SAMPLE_LABEL)} <a href="/fix">Back to the Listing Fix</a></p>
 {body}
-<footer><a href="/fix">Get the Listing Fix for your service</a> &middot; <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a><br>
+<footer><a href="/fix">Get the Listing Fix for your service</a> &middot; <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a> &middot; <a href="{FORGE_ALONE_PRIVACY_URL}">Privacy</a> &middot; <a href="{FORGE_ALONE_TERMS_URL}">Terms</a><br>
 Unlisted isn&#x27;t affiliated with Coinbase. Built by <a href="{FORGE_ALONE_URL}">Forge Alone</a>.</footer>
 </main></body></html>"""
 

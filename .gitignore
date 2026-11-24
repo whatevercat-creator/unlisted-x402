@@ -4,5 +4,7 @@ __pycache__/
 Claude outputs/
 .baseline402/
 .preview/
+# Listing Fix client job files: never commit
+docs/listing-fix/jobs/
 # Claude Code local settings (can hold approved commands with secrets)
 .claude/settings.local.json
