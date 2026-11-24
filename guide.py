@@ -346,7 +346,7 @@ Content-Type: application/json
 
 <div class="card"><b>Want it done for you?</b> The <a href="/fix">Listing Fix</a> checks your service against the agent catalogs and emails you a written report with the exact changes to make.</div>
 
-<footer><a href="/">unlisted.sh</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a><br>
+<footer><a href="/">unlisted.sh</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="{fix_page.FORGE_ALONE_PRIVACY_URL}">Privacy</a> &middot; <a href="{fix_page.FORGE_ALONE_TERMS_URL}">Terms</a><br>
 Unlisted isn't affiliated with Coinbase. &ldquo;CDP&rdquo; and &ldquo;Bazaar&rdquo; refer to Coinbase Developer Platform's x402 facilitator and discovery catalog.</footer>
 </main></body></html>"""
 

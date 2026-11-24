@@ -889,7 +889,7 @@ Content-Type: application/json
 {{"url": "https://your-api.example.com/paid-route"}}</pre>
 <p>For a <code>POST</code> route, add <code>"method": "POST"</code> and, if it needs one, a sample <code>"body"</code>. Add <code>?mode=paid</code> for the real-payment test. Paid per call in USDC on Base via x402: an unpaid request returns HTTP 402 with the payment requirements. The report starts with <code>bazaar.indexed</code>: <code>true</code>, <code>false</code>, or <code>null</code> if it couldn't be checked.</p>
 
-<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/llms.txt">llms.txt</a> &middot; <a href="/healthz">Status</a> &middot; <a href="/fix">Listing Fix</a><br>
+<footer><a href="/guide">Guide: why endpoints go unlisted</a> &middot; <a href="/docs">API docs</a> &middot; <a href="/openapi.json">OpenAPI</a> &middot; <a href="/llms.txt">llms.txt</a> &middot; <a href="/healthz">Status</a> &middot; <a href="/fix">Listing Fix</a> &middot; <a href="{fix_page.FORGE_ALONE_PRIVACY_URL}">Privacy</a> &middot; <a href="{fix_page.FORGE_ALONE_TERMS_URL}">Terms</a><br>
 Built by <a href="https://forgealone.com">Forge Alone</a></footer>
 </main></body></html>"""
 

@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-11-09. Facts come from the repo unless marked.
+Last updated: 2026-11-24. Facts come from the repo unless marked.
 "(unverified)" = not confirmed from the repo or a live read.
 
 ## What's live
@@ -52,9 +52,9 @@ Last updated: 2026-11-09. Facts come from the repo unless marked.
    Render, and it's on: confirmed from logs on 2026-11-06 (an Oct 31
    diagnose_usage line recorded `"bazaar": "indexed"`). The new 402
    description still doesn't claim it, since it depends on that setting.
-3. **Card statement name**: `fix_page.STATEMENT_NAME` is "CRYPTO SENTIMENT",
-   with a code comment to confirm it in Stripe before deploy. Whether that
-   was done: unverified.
+3. **Card statement name**: `fix_page.STATEMENT_NAME` is "FORGE ALONE",
+   matching what Stripe shows on statements (confirmed by Claudine in the
+   Stripe dashboard on 2026-11-23). Done on branch `forge-alone-policy`.
 4. **Documented error responses** (one of CDP's curation criteria): not
    checked for Unlisted's own route.
 
